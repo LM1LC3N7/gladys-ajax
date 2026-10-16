@@ -1,45 +1,87 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// The configuration of the manifest `config_schema`, normalized, and the
+// environment of the receiver sub-container derived from it.
 // -----------------------------------------------------------------------------
 
-// Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
-export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+import { KEY_FORMATS, PING_INTERVAL, TIME_SKEW } from './constants.js';
+import { parseKey } from './sia/frame.js';
+
+/** Defaults, mirrored by the manifest (checked by test/manifest.test.js). */
+export const DEFAULTS = {
+  key_format: 'auto',
+  time_skew: TIME_SKEW.default,
+  ping_interval: PING_INTERVAL.default,
+  language: 'fr',
 };
 
-/**
- * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
- */
+export const LANGUAGES = ['fr', 'en'];
+
+/** `1234, ab12 C0FFEE` -> ['1234', 'AB12', 'C0FFEE'] (3 to 16 hex digits), plus what was not valid. */
+export function parseAccounts(text) {
+  const valid = [];
+  const invalid = [];
+  for (const word of String(text ?? '')
+    .split(/[\s,;]+/)
+    .filter(Boolean)) {
+    const account = word.replace(/^#/, '').toUpperCase();
+    if (/^[0-9A-F]{3,16}$/.test(account)) {
+      if (!valid.includes(account)) valid.push(account);
+    } else {
+      invalid.push(word);
+    }
+  }
+  return { valid, invalid };
+}
+
+const bounded = (value, { default: fallback, min, max }) => {
+  const number = Number(value);
+  return value !== null && value !== '' && value !== undefined && Number.isFinite(number)
+    ? Math.round(Math.max(min, Math.min(max, number)))
+    : fallback;
+};
+
 export function normalizeConfig(raw = {}) {
+  const { valid, invalid } = parseAccounts(raw?.accounts);
+  const keyFormat = String(raw?.key_format ?? DEFAULTS.key_format)
+    .trim()
+    .toLowerCase();
+  const format = KEY_FORMATS.includes(keyFormat) ? keyFormat : DEFAULTS.key_format;
+  let key = null;
+  let keyError = null;
+  try {
+    key = parseKey(raw?.encryption_key, format);
+  } catch (err) {
+    keyError = err.message;
+  }
+  const language = String(raw?.language ?? DEFAULTS.language)
+    .trim()
+    .toLowerCase();
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    accounts: valid,
+    invalidAccounts: invalid,
+    key,
+    keyError,
+    keyFormat: format,
+    timeSkew: bounded(raw?.time_skew, TIME_SKEW),
+    pingInterval: bounded(raw?.ping_interval, PING_INTERVAL),
+    language: LANGUAGES.includes(language) ? language : DEFAULTS.language,
+  };
+}
+
+/**
+ * The env of the receiver (see src/sia/service.js). The key travels as the hex
+ * of its bytes, whatever form the user typed. A change recreates the container.
+ */
+export function receiverEnv(config, token, logLevel) {
+  return {
+    SIA_ACCOUNTS: JSON.stringify(
+      config.accounts.map((account) => ({
+        account,
+        key: config.key ? config.key.toString('hex') : '',
+      })),
+    ),
+    SIA_TIME_SKEW: String(config.timeSkew),
+    CHANNEL_TOKEN: token,
+    ...(logLevel ? { LOG_LEVEL: logLevel } : {}),
   };
 }

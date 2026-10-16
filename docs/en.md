@@ -1,61 +1,224 @@
-# Demo Devices Template
+# Ajax Systems (SIA DC-09)
 
-This is the user documentation of the integration. Gladys re-hosts this file
-and shows a permanent **Documentation** link to it in the Configuration screen
-(in the user's language, with English as the fallback) — it is when
-configuring that the user needs it most. Keep the short onboarding hints in
-the `section` blocks of the manifest `config_schema`; put the long
-step-by-step (screenshots, troubleshooting…) here.
+This integration brings an **Ajax Systems** alarm (Hub, Hub Plus, Hub 2,
+Hub 2 Plus, Hub 2 (4G), Hub Hybrid…) into Gladys **locally**: Gladys acts as
+the **monitoring station** of your hub. The hub sends its events straight to
+Gladys over **SIA DC-09**, the protocol of alarm receiving centres, on your
+network: no Ajax cloud, no account, no API key. You get the arming state, the
+alarms in progress, the faults, the reporting status of the hub, the last
+event and scene triggers. Unofficial, not affiliated with Ajax Systems.
 
-## What you get
+> **Development version (0.1).** Built after the SIA DC-09 receivers used
+> with real Ajax hubs (the Home Assistant library pysiaalarm and the
+> Homebridge plugin homebridge-ajax-sia) and the Ajax SIA code table, and
+> tested against a SIA transmitter simulator (plain and encrypted messages),
+> not yet with a real hub. Feedback is welcome on the GitHub repository.
 
-Six demo devices show up after installation: a weather station (real data
-from Open-Meteo), a switch, a dimmable light, a smart plug with power
-metering, a motion sensor and a camera.
+**SIA only reports.** The hub talks, Gladys listens: arming or disarming the
+alarm from Gladys is not possible with this protocol. Use the Ajax app,
+keyfobs or keypads to control it; Gladys follows what happens.
+
+## Which integration for which alarm?
+
+| Your alarm                                                                             | Gladys integration                         |
+| -------------------------------------------------------------------------------------- | ------------------------------------------ |
+| Ajax Systems                                                                           | **this one**                               |
+| Another panel able to report to a monitoring station in SIA DC-09 (SIA-DCS or ADM-CID) | this one may work (see "Other panels")     |
+| Somfy Protexial / Protexiom, Somfy Protect, Verisure, Diagral, SimpliSafe, Ring…       | their own integrations in the Gladys store |
+
+The Gladys core has no Ajax or SIA DC-09 integration.
+
+## Requirements
+
+- An Ajax hub with firmware **OS Malevich 2.7 or later** (direct SIA DC-09
+  reporting, without Ajax Translator).
+- An **admin** account of the space in the Ajax app (or a PRO account with
+  the rights to configure the system).
+- Gladys **5.1 or later**, installed on a machine the hub can reach on your
+  network (the hub connects to Gladys, not the other way round).
+- The **monitoring station setting of the hub must be free**. If a security
+  company monitors your alarm, this setting is theirs: ask them before
+  touching it.
+
+## How it works
+
+```
+Ajax hub ──(SIA DC-09, TCP, optional AES)──▶ sia-receiver container ──▶ Gladys integration ──▶ devices, scenes
+ (Ethernet / Wi-Fi)                           port shown in Gladys       (states learned from the events)
+```
+
+The integration runs two containers: the integration itself, and a small
+**`sia-receiver`** container that publishes a port on your network (an
+integration container cannot). The hub sends each event to that port; the
+receiver checks it (CRC, account, encryption, clock) and acknowledges it
+right away, then hands it to the integration. If the integration restarts,
+the receiver keeps the last 500 messages and delivers them once it is back.
+
+## Installation
+
+1. Install the integration from the Gladys store.
+2. In its **Configuration** tab, enter the **account number(s)** (see below)
+   and, if you use it, the **encryption key**, then save. The receiver
+   starts and Gladys shows, in the "Settings to enter in the Ajax app"
+   section, the **address and port** to give to the hub (reload the page if
+   the port is still shown as `{{port:sia}}`).
+3. In the Ajax app, set up the monitoring station (next section).
+4. In the **Discovery** tab, add the device **Ajax alarm 1234**.
+5. Click **Show the receiver status**: it says whether the hub reports and
+   shows the last refused message, if any.
+
+## Settings in the Ajax app
+
+Open the **space settings** (gear icon) → **Security companies** →
+**Monitoring station** (names vary a little between app versions; this is not
+the "Invite a security company" form). Then:
+
+| Ajax app setting                                          | Value                                                                                                                    |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Protocol                                                  | **SIA DC-09 (SIA-DCS)**                                                                                                  |
+| Primary IP address                                        | the **LAN address** of the machine running Gladys (give it a fixed address or a DHCP reservation)                        |
+| Port                                                      | the **TCP port** shown in the Gladys configuration ("Settings to enter in the Ajax app")                                 |
+| Object number                                             | any **3 to 16 hexadecimal characters** (digits and A to F), e.g. `1234`: the same number in Gladys ("Account number(s)") |
+| Encryption                                                | **on**, recommended: a key of **16 characters** (or 32 hexadecimal characters); the same key in Gladys                   |
+| Monitoring station periodic test interval                 | **on, every minute**, and the same interval in Gladys: this is how Gladys knows the hub is still there                   |
+| Connect on demand                                         | off (the hub keeps its connection open: the fastest)                                                                     |
+| Channels                                                  | keep **Ethernet** and **Wi-Fi**; a cellular channel cannot reach your private network: turn it off for this connection   |
+| One IP address for all alarm channels (OS Malevich 2.16+) | on, unless you want different addresses per channel                                                                      |
+
+About the address: the "Settings to enter in the Ajax app" section shows the
+name your browser uses to reach Gladys (`{{gladys_host}}`). The hub needs the
+**IP address on your local network**: if you browse through Gladys Plus or a
+reverse proxy, that name is not the right one; use the machine's LAN IP.
 
 ## Configuration
 
-1. Open the **Configuration** tab of the integration.
-2. Set the **latitude** and **longitude** the demo weather station should
-   observe (they default to Paris), and pick your temperature unit.
-   The **refresh interval** sets how often the weather station and the
-   plug's power are read: every 5 minutes by default, every minute at most.
-3. Save: the devices appear in the **Discovery** tab, ready to be added.
+| Field                             | Description                                                                                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Account number(s) (object number) | the object number set on the hub. Several hubs: separate their numbers with commas (one device per hub). A hub reporting with a number that is not listed is refused, and the logs say so. |
+| Encryption key                    | the key set on the hub, shared by all the accounts. Empty: no encryption. With a key, unencrypted messages are refused.                                                                    |
+| Key format                        | automatic: 32 hexadecimal characters are read as hexadecimal (Ajax "HEX" key), 16 characters as text (Ajax "ASCII" key). Choose "Text" for a 32-character text key made of hex digits.     |
+| Periodic test interval of the hub | the interval set in the Ajax app, in minutes. The hub is shown as **silent** after two missed tests (plus 30 s). 0: no supervision.                                                        |
+| Allowed clock difference          | 60 s by default. A message whose time is further from the Gladys clock is refused (it protects against replayed messages); the hub then sets its clock and resends it. 0: not checked.     |
+| Language                          | French or English, for the names of the devices added afterwards and the last event text.                                                                                                  |
 
-The **Prefer the local connection** toggle drives the demo plug: it reports
-the channel it actually uses as a badge (local or cloud), with an orange dot
-when it runs degraded (local refused, cloud fallback).
+## What you get
 
-## Actions
+One device per account, **Ajax alarm 1234**, all features read-only:
 
-- **Test the weather provider** — performs a live request to Open-Meteo and
-  shows the current temperature and humidity under the button.
-- **Identify a device** — pick one of your devices in the list and it will
-  signal itself (the demo light "blinks" in the logs).
+| Feature           | Values                                                                                                          |
+| ----------------- | --------------------------------------------------------------------------------------------------------------- |
+| Mode              | `disarmed`, `armed`, `night` (night mode), `partial` (some Ajax groups armed)                                   |
+| Alarm in progress | 1 while an alarm is in progress (intrusion, fire, heat, gas, water leak, panic, medical, duress, code guessing) |
+| Tamper            | 1 when a device or the hub is opened (or a detector masked)                                                     |
+| Low battery       | 1 when a device battery is low, or the hub battery is low or missing                                            |
+| Mains power       | 0 when the hub (or a range extender, or a device's external power) lost power                                   |
+| Devices connected | 0 when a device lost its connection to the hub, or radio interference is detected                               |
+| Hub reporting     | 1 while the hub sends its periodic tests, 0 once silent                                                         |
+| Armed groups      | the armed group numbers (`1, 3`), `all` or `none`                                                               |
+| Last event        | e.g. "Intrusion, device 3, group 1 (BA)" or "Armed, user 2 (CL)"                                                |
+
+- The **device number** is the number at the bottom of a device's page in
+  the Ajax app ("Device 3"); 0 is the hub itself. The hub sends that number
+  with each event, not the device name.
+- **Alarms**: an intrusion detected while armed stays "in progress" until the
+  alarm is **disarmed** (a door closed again does not end it). Fire, heat,
+  gas and water leaks end when the detector reports a return to normal.
+  Panic and medical alarms end when cancelled or at the next disarm.
+- **Duress**: a disarm with the Ajax duress code is reported as a disarm
+  **and** a duress alarm (silent for the intruder, visible in Gladys).
+- **State learned from the events**: SIA only reports changes. The state is
+  saved and kept across restarts, but a change made while the receiver was
+  not running is only seen at the next event of the same kind. The **Clear
+  the alarm and fault memory** button resets the alarms and faults (not the
+  mode).
+- **Detectors only report while armed**, unless they are set as always
+  active in the Ajax app; in night mode each detector follows its own
+  setting.
+- **Not available over SIA**: device names, photos (MotionCam), temperatures,
+  battery levels, siren and relay control. Only event codes are sent.
 
 ## Scenes
 
-The integration adds its own cards to the scene editor (Gladys 5.1 or
-later), under the **Integrations** category:
+Five triggers, each with an optional **hub** filter:
 
-- **Motion detected** (trigger) — starts the scene when a demo motion sensor
-  sees something move. Optionally pick the sensor and what moved (person,
-  animal); left empty, any detection matches. The following actions can
-  read what moved with `{{triggerEvent.data.target}}`.
-- **Identify a device** (action) — makes the chosen device signal itself.
-  It returns whether the device could signal itself, so the following
-  actions can depend on it.
+| Trigger                      | When                                                                                           | Filter               | Variables                                                                 |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------- |
+| **Ajax alarm**               | a new alarm (intrusion, fire, heat, gas, water, panic, medical, duress, code guessing, freeze) | kind                 | account, kind, code, device number (zone), group, user, mode, description |
+| **Ajax arming changed**      | the mode changed (keyfob, keypad, app, schedule)                                               | new mode             | account, mode, previous mode, code, user, group, description              |
+| **Ajax fault**               | a new fault (tamper, battery, power, connection, other) or the hub went silent (`offline`)     | kind                 | account, kind, code, zone, description                                    |
+| **Ajax alarm or fault over** | an alarm or a fault ended (restore code, disarm, or the hub reporting again)                   | kind                 | account, kind, code, zone, description                                    |
+| **Any Ajax event**           | every event (periodic tests excepted)                                                          | SIA code (e.g. `BA`) | account, code, zone, user, group, text, description                       |
 
-## Dashboard
+Ideas: send a notification with the description of an alarm; follow the
+Gladys house alarm mode with the "Ajax arming changed" trigger and the "Set
+the alarm mode" action; turn the lights on when the alarm goes off; warn
+when the hub is silent or has lost mains power.
 
-Add the **Demo status** widget to a dashboard: it shows the live
-temperature of the weather station and the power of the office plug, the
-connection the plug currently uses (orange when degraded) and the observed
-location. Its **Identify the light** button makes the demo light signal
-itself.
+Messages that the receiver kept while the integration was restarting update
+the states, but do not start scenes when they are more than 5 minutes old.
+
+## SIA codes understood
+
+| Codes                                               | Meaning                                                              |
+| --------------------------------------------------- | -------------------------------------------------------------------- |
+| `CL` `CA` `CF` `AF` `CQ` `CS`                       | armed (the number is the user)                                       |
+| `CG` `CB` / `OG` `OB`                               | group armed / disarmed (the group is `ri`)                           |
+| `NL` `NF` `NC` `NB` / `NP` `NO` `ND`                | night mode on / off (`ND`: under duress)                             |
+| `OP` `OA` `OQ` `OR` `OS`                            | disarmed                                                             |
+| `HA`                                                | disarmed with the duress code (Ajax)                                 |
+| `BA` `BV`, `FA`, `KA`, `GA`, `WA`, `PA`, `MA`, `JA` | alarms: intrusion, fire, heat, gas (CO), water, panic, medical, code |
+| `BR` `BH`, `FH`, `KH`, `GH`, `WH`, `PH`, `MR`       | the matching restores                                                |
+| `TA` / `TR`                                         | tamper / restored                                                    |
+| `XT` `YT` `YM` / `XR` `YR` `YA`                     | battery low or missing / restored                                    |
+| `AT` `YP` / `AR` `YQ`                               | power lost / back                                                    |
+| `XL` `PF` `XQ` `YC` / `XC` `PO` `XH` `YK`           | connection lost, interference / restored                             |
+| `RP`, `NULL` messages                               | periodic test (supervision only)                                     |
+
+Every other code is still acknowledged, shown as the last event and sent to
+the "Any Ajax event" trigger, described with the SIA code table.
+
+## Other panels
+
+Any panel that reports to a monitoring station in **SIA DC-09** with the
+**SIA-DCS** or **ADM-CID** (Contact ID) format may work: TCP or UDP (the UDP
+port is shown in the configuration too), AES-128, -192 or -256 encryption.
+The arming and alarm mapping follows the Ajax table: some codes mean
+something slightly different on other brands (`HA` is a hold-up alarm in
+the SIA standard, a duress disarm for Ajax). Feedback is welcome.
+
+## Security
+
+The receiver port is open on your local network, like any monitoring
+receiver. Without encryption, anyone on the network could send a fake event:
+turn **encryption on**, which also makes the receiver refuse unencrypted
+messages, and keep the clock check (replayed messages are refused). The
+receiver container has no access to Gladys: it only hands the messages to
+the integration over a private network. The key is stored as a secret in
+Gladys and never logged.
 
 ## Troubleshooting
 
-The integration logs everything it does: check the integration logs from the
-Gladys UI (or `docker logs` on the host) with `LOG_LEVEL=debug` for the full
-detail.
+- **"Waiting for the first message of hub …"**: the hub has not reached
+  Gladys yet. Check the IP address and the port in the Ajax app, that the
+  monitoring station is enabled on a channel that reaches your network, and
+  that no firewall blocks the port on the Gladys machine.
+- **"Unknown account …"** (status button, logs): the object number set on
+  the hub is not in "Account number(s)".
+- **"Decryption failed (wrong key?)"**, **"no encryption key is configured"**
+  or **"Unencrypted message … refused"**: the key or the encryption switch
+  differs between the hub and Gladys.
+- **"timestamp … off"**: the clock of the hub or of the Gladys machine is
+  wrong; the hub resends after setting its clock. Set the allowed difference
+  to 0 to stop checking.
+- **"No message from hub … within the periodic test interval"**: the
+  periodic test is off or set to a longer interval in the Ajax app, or the
+  hub lost its network.
+- The integration logs (and the `sia-receiver` container logs) detail every
+  message received and every refusal; the key is never in them.
+
+## Privacy
+
+Everything stays on your local network: the hub sends its events to Gladys
+only. The account number and the key stay in Gladys (the key as a secret,
+never sent back to the browser). Ajax and Ajax Systems are trademarks of
+Ajax Systems; this integration is not affiliated with Ajax Systems.

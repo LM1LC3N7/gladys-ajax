@@ -1,76 +1,92 @@
 # CLAUDE.md
 
-Project rules for coding assistants (Claude Code reads this file) and for human
-contributors.
+Project rules for coding assistants (Claude Code reads this file) and for
+human contributors. Read **[TODO.md](./TODO.md) first**: status, decisions
+already taken and the next milestones.
 
 ## What this is
 
-A Gladys Assistant **external integration**: a Node.js service (Node 22+, ESM,
-no build step) that runs in its own sandboxed Docker container and talks to
-Gladys through
-[`@gladysassistant/integration-sdk`](https://github.com/GladysAssistant/integration-sdk-js),
-its only runtime dependency. It started from the official JavaScript template.
+A Gladys Assistant **external integration** of type `device`: a Node.js
+service (Node 22+, ESM, no build step) in its own sandboxed Docker container,
+talking to Gladys through `@gladysassistant/integration-sdk` (v0.15), its only
+runtime dependency. Gladys becomes the SIA DC-09 monitoring station of Ajax
+Systems hubs: a `sia-receiver` sub-container (same image, `node
+src/receiver.js`) publishes the SIA port, acknowledges the hubs and hands the
+messages to the main container over the private network of the integration.
+SIA is one-way: nothing is commanded. Unofficial, not affiliated with Ajax
+Systems.
 
 ## Commands
 
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/receiver.test.js         # one file
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
+npm run audit                             # npm audit --omit=dev
 npx github:GladysAssistant/integration-store .   # store admission checks
+e2e/run.sh                                # Docker: image, receiver, SIA client
 ```
 
-The CI (`.github/workflows/ci.yml`) runs `format:check`, `lint` and `test` on
-Node 22 and 24, and builds the Docker image: run the three commands before
-pushing.
+Run `format:check`, `lint`, `test` and `audit` before every commit.
 
 ## Architecture
 
 ```
-index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
-src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
-.github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
+index.js              main container: SDK bootstrap only
+src/handlers.js       every SDK handler -> the app (shared with the tests)
+src/app.js            AjaxApp: receiver start (env), channel, states, scene
+                      events, supervision, buttons, /data persistence
+src/model.js          SIA events -> account state and effects (pure)
+src/devices.js        -> Gladys device and states (pure)
+src/config.js         config_schema normalized, the receiver env
+src/store.js          /data/ajax-state.json
+src/channel.js        receiver <-> main: JSON lines, token, queue
+src/constants.js      manifest keys, receiver, value lists, timings
+src/i18n.js           names and texts (fr/en), SIA code labels
+src/receiver.js       sub-container entry point
+src/sia/service.js    receiver service: env -> listeners + channel
+src/sia/server.js     TCP / UDP listeners
+src/sia/receiver.js   one message -> ACK / NAK / DUH + events (pure)
+src/sia/frame.js      framing, CRC-16/ARC, AES-CBC, timestamps, keys
+src/sia/content.js    data block -> events (SIA-DCS, ADM-CID, NULL)
+src/sia/codes.js      SIA code table + ADM-CID mapping (generated, pysiaalarm)
+test/fixtures/        SIA lines from pysiaalarm's tests
+test/helpers/         an independent SIA transmitter (tests and e2e)
+e2e/                  Docker check of the real image
 ```
 
 ## Rules
 
-- **External ids are forever.** Build them with
-  `gladys.externalIds(type, platformId)`, `platformId` being the unique id the
-  platform gives the device (serial, cloud id, MAC), never a label. Gladys keys
-  devices, their history, scenes and dashboards on them: changing one creates a
-  new device and orphans the old one. The same goes for every key users store:
-  manifest `config_schema`, `actions`, widget and scene keys, feature keys.
-- **The container rootfs is read-only.** Write only under `/data`, the one
-  writable volume. Never log tokens, passwords or API keys.
-- **Versions belong to the Release workflow** (Actions → Release). Never edit
-  `version` in `package.json` or in the manifest, nor the `docker_image` tag,
-  by hand — except on the README's hand-pushed tag path, which bumps all three
-  together before tagging. `test/manifest.test.js` checks they agree.
-- **Changelog.** Every user-visible change adds a line under `## [Unreleased]`
-  in `CHANGELOG.md` (`### Added`, `Changed`, `Fixed`, `Removed`, `Security`).
-  Never write a version heading: the Release workflow moves the section, and it
-  becomes the notes of the GitHub Release.
-- **Manifest.** Texts are multi-language objects `{ "en": ..., "fr": ... }`:
-  `label`, `description` and `placeholder` alike, never a plain string. The
-  catalog `description` holds 10 to 100 characters per language. A field the
-  older cores do not know needs a higher `gladys_version` minimum
-  (`categories`: 4.86.0; `widgets`, `scene_triggers`, `scene_actions`,
-  `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
-  code (defaults, action, scene and widget handlers): change both sides
-  together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
-- **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
-  in English. Tests never touch the network.
+- **External ids are forever**: device `hub:<account>`; features `mode`,
+  `alarm`, `tamper`, `battery-low`, `mains-power`, `device-link`, `online`,
+  `armed-groups`, `last-event`. Never change how they are built.
+- Manifest keys (config keys, actions, scene triggers and their fields and
+  variables), the sub-container name `sia-receiver`, its port names `sia` and
+  `sia_udp`, the mode values (`disarmed`, `armed`, `night`, `partial`) and
+  the kinds are frozen: users store them in scenes.
+- **Never answer a panel wrongly**: an ACK means "received"; anything the
+  receiver cannot check (CRC, account, key, clock) gets a NAK so the panel
+  resends, what it cannot read a DUH. Never ACK an unencrypted message on an
+  account with a key.
+- **Secrets**: the key travels only in the receiver env (`startContainer`)
+  and is stored as a `secret` config field; never log it, never put it in the
+  manifest, never send it on the channel.
+- The receiver has no Gladys credentials; the channel port (7778) is never
+  published; only the main container (which knows the token) reads it.
+- Value conventions: the Gladys side uses the enums of the core
+  `server/utils/constants.js` (binary 1 = on; `mains-power`, `device-link`
+  and `online` are 1 when OK), the SDK does not export them.
+- Events go through `publishStates` (repeated values matter), scene events
+  are capped at 240 per minute (Gladys: 300 states and 300 scene events per
+  minute).
+- Container limits: 256 MB RAM, 0.5 CPU, read-only rootfs, only `/data`
+  writable (the main container keeps its state there; the receiver writes
+  nothing), bridge network.
+- Tests never touch the network beyond 127.0.0.1.
+- Code, comments, README in English; `docs/fr.md` and `docs/en.md` kept in
+  sync.
+- Every user-visible change adds a line under `## [Unreleased]` in
+  `CHANGELOG.md`; versions belong to the Release workflow.

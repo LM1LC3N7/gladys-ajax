@@ -10,7 +10,9 @@
 # They run on Node 22 (the oldest version `engines` accepts) and Node 24 (the
 # one the Docker image ships with, see the Dockerfile). The image is built too
 # (amd64 only, never pushed), so a broken Dockerfile shows up here rather than
-# in a release.
+# in a release. The e2e job runs that image as Gladys would (the sia-receiver
+# sub-container read-only under its limits, SIA frames over TCP and UDP, the
+# main app on the real channel): see e2e/run.sh.
 #
 # The store validator (`npx github:GladysAssistant/integration-store .`) is not
 # a gate here: it also checks that the manifest's `docker_image` exists on its
@@ -44,7 +46,7 @@ jobs:
           persist-credentials: false # no git push here
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -81,3 +83,15 @@ jobs:
           context: .
           platforms: linux/amd64
           push: false
+
+  e2e:
+    runs-on: ubuntu-latest
+    name: End-to-end (Docker, SIA frames)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false # no git push here
+
+      - name: Run e2e/run.sh
+        run: bash e2e/run.sh

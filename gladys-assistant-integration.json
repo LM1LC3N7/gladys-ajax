@@ -1,177 +1,524 @@
 {
   "manifest_version": 1,
   "type": "device",
-  "name": "Demo Devices Template",
+  "name": "Ajax Systems (SIA DC-09)",
   "description": {
-    "en": "Starter template showing sensors, a switch, a dimmable light and a smart plug.",
-    "fr": "Template de démarrage : capteurs, interrupteur, lampe variable et prise connectée."
+    "en": "Ajax Systems alarms, locally over SIA DC-09: arming state, alarms, faults, scenes.",
+    "fr": "Alarmes Ajax Systems en local par SIA DC-09 : armement, alarmes, défauts, scènes."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/gladysassistant/integration-template-js:1.0.0",
+  "version": "0.1.0",
+  "docker_image": "ghcr.io/lm1lc3n7/gladys-ajax:0.1.0",
   "gladys_version": ">=5.1.0",
-  "cover_image": "https://raw.githubusercontent.com/GladysAssistant/integration-template-js/master/cover.png",
-  "categories": ["lighting", "security", "environment"],
-  "transports": ["local", "cloud"],
+  "cover_image": "https://raw.githubusercontent.com/LM1LC3N7/gladys-ajax/main/cover.png",
+  "categories": ["security"],
+  "transports": ["local"],
+  "containers": [
+    {
+      "name": "sia-receiver",
+      "docker_image": "ghcr.io/lm1lc3n7/gladys-ajax:0.1.0",
+      "command": ["node", "src/receiver.js"],
+      "start": "manual",
+      "read_only": true,
+      "memory_mb": 96,
+      "cpu": 0.2,
+      "ports": [
+        {
+          "container_port": 7777,
+          "protocol": "tcp",
+          "name": "sia",
+          "label": {
+            "en": "SIA DC-09 receiver (TCP)",
+            "fr": "Récepteur SIA DC-09 (TCP)"
+          },
+          "browsable": false
+        },
+        {
+          "container_port": 7777,
+          "protocol": "udp",
+          "name": "sia_udp",
+          "label": {
+            "en": "SIA DC-09 receiver (UDP)",
+            "fr": "Récepteur SIA DC-09 (UDP)"
+          },
+          "browsable": false
+        }
+      ]
+    }
+  ],
   "config_schema": [
     {
       "key": "intro",
       "type": "section",
-      "label": { "en": "Getting started", "fr": "Pour commencer" },
+      "label": {
+        "en": "Your Ajax alarm, without the cloud",
+        "fr": "Votre alarme Ajax, sans le cloud"
+      },
       "description": {
-        "en": "The demo weather station reads real data from the free Open-Meteo API: pick the coordinates to observe. No account, no API key.",
-        "fr": "La station météo de démonstration lit de vraies données via l'API gratuite Open-Meteo : choisissez les coordonnées à observer. Pas de compte, pas de clé d'API."
+        "en": "Gladys becomes a monitoring station for your Ajax hub: the hub sends its events straight to Gladys over SIA DC-09 (the protocol of alarm receiving centres), on your network, without the Ajax cloud. You get the arming state (armed, night mode, groups, disarmed), the alarms in progress, the faults (tamper, batteries, mains power, device connections), the hub's reporting status, the last event and scene triggers. SIA only reports: arming or disarming from Gladys is not possible. Other panels speaking SIA DC-09 (SIA-DCS or ADM-CID) may work too. Unofficial, not affiliated with Ajax Systems.",
+        "fr": "Gladys devient une station de télésurveillance pour votre centrale Ajax : la centrale envoie ses événements directement à Gladys en SIA DC-09 (le protocole des centres de télésurveillance), sur votre réseau, sans le cloud Ajax. Vous obtenez l'état d'armement (armée, mode nuit, groupes, désarmée), les alarmes en cours, les défauts (autoprotection, piles, secteur, liaisons des détecteurs), la supervision de la centrale, le dernier événement et des déclencheurs de scène. SIA ne fait que remonter des informations : armer ou désarmer depuis Gladys n'est pas possible. D'autres centrales parlant SIA DC-09 (SIA-DCS ou ADM-CID) peuvent fonctionner aussi. Non officiel, sans lien avec Ajax Systems."
       },
       "links": [
         {
-          "url": "https://open-meteo.com/en/docs",
-          "label": { "en": "Open-Meteo documentation", "fr": "Documentation Open-Meteo" }
+          "url": "https://github.com/LM1LC3N7/gladys-ajax/blob/main/docs/fr.md",
+          "label": {
+            "en": "Guide (French)",
+            "fr": "Guide (français)"
+          }
+        },
+        {
+          "url": "https://github.com/LM1LC3N7/gladys-ajax/blob/main/docs/en.md",
+          "label": {
+            "en": "Guide (English)",
+            "fr": "Guide (anglais)"
+          }
         }
       ]
     },
     {
-      "key": "latitude",
-      "type": "number",
-      "label": { "en": "Latitude", "fr": "Latitude" },
-      "description": {
-        "en": "Latitude used for the demo weather sensor.",
-        "fr": "Latitude utilisée par le capteur météo de démonstration."
+      "key": "hub_setup",
+      "type": "section",
+      "label": {
+        "en": "Settings to enter in the Ajax app",
+        "fr": "Réglages à saisir dans l'application Ajax"
       },
-      "placeholder": { "en": "e.g. 48.8566", "fr": "ex. 48.8566" },
-      "required": true,
-      "default": 48.8566,
-      "min": -90,
-      "max": 90
+      "description": {
+        "en": "In the Ajax app (admin or PRO account): space settings → Security companies → Monitoring station. Protocol: SIA DC-09 (SIA-DCS). IP address: the LAN address of the machine running Gladys ({{gladys_host}} if that is how you reach it), port {{port:sia}}. Object number: the account number below. Encryption: on, with the same key as below (recommended). Monitoring station periodic test: on, every minute (the interval below). Keep only the channels that reach your network (Ethernet, Wi-Fi). If your hub is monitored by a company, ask it before changing these settings. Panels that send in UDP: port {{port:sia_udp}}.",
+        "fr": "Dans l'application Ajax (compte administrateur ou PRO) : paramètres de l'espace → Sociétés de sécurité → Centre de télésurveillance. Protocole : SIA DC-09 (SIA-DCS). Adresse IP : l'adresse réseau local de la machine de Gladys ({{gladys_host}} si c'est ainsi que vous la joignez), port {{port:sia}}. Numéro d'objet : le numéro de compte ci-dessous. Chiffrement : activé, avec la même clé que ci-dessous (conseillé). Test périodique : activé, toutes les minutes (l'intervalle ci-dessous). Ne gardez que les canaux qui joignent votre réseau (Ethernet, Wi-Fi). Si une société surveille votre centrale, demandez-lui avant de changer ces réglages. Centrales qui envoient en UDP : port {{port:sia_udp}}."
+      }
     },
     {
-      "key": "longitude",
-      "type": "number",
-      "label": { "en": "Longitude", "fr": "Longitude" },
-      "description": {
-        "en": "Longitude used for the demo weather sensor.",
-        "fr": "Longitude utilisée par le capteur météo de démonstration."
+      "key": "accounts",
+      "type": "string",
+      "label": {
+        "en": "Account number(s) (object number)",
+        "fr": "Numéro(s) de compte (numéro d'objet)"
       },
-      "placeholder": { "en": "e.g. 2.3522", "fr": "ex. 2.3522" },
-      "required": true,
-      "default": 2.3522,
-      "min": -180,
-      "max": 180
+      "description": {
+        "en": "The object number you set on the hub, 3 to 16 hexadecimal characters (digits and A to F). Several hubs: separate their numbers with commas. Each one becomes a device.",
+        "fr": "Le numéro d'objet réglé sur la centrale, 3 à 16 caractères hexadécimaux (chiffres et A à F). Plusieurs centrales : séparez leurs numéros par des virgules. Chacune devient un appareil."
+      },
+      "placeholder": {
+        "en": "1234",
+        "fr": "1234"
+      },
+      "required": true
     },
     {
-      "key": "unit",
+      "key": "encryption_key",
+      "type": "secret",
+      "label": {
+        "en": "Encryption key",
+        "fr": "Clé de chiffrement"
+      },
+      "description": {
+        "en": "The key set in the hub: 16 characters, or 32 hexadecimal characters (AES-128; 24/32 characters or 48/64 hexadecimal for AES-192/256 on other panels). Shared by all the accounts. Empty: no encryption. With a key, unencrypted messages are refused.",
+        "fr": "La clé réglée dans la centrale : 16 caractères, ou 32 caractères hexadécimaux (AES-128 ; 24/32 caractères ou 48/64 hexadécimaux pour AES-192/256 sur d'autres centrales). Commune à tous les comptes. Vide : sans chiffrement. Avec une clé, les messages non chiffrés sont refusés."
+      },
+      "required": false
+    },
+    {
+      "key": "key_format",
       "type": "select",
-      "label": { "en": "Temperature unit", "fr": "Unité de température" },
+      "label": {
+        "en": "Key format",
+        "fr": "Format de la clé"
+      },
+      "description": {
+        "en": "Automatic: 32, 48 or 64 hexadecimal characters are read as hexadecimal, other keys as text.",
+        "fr": "Automatique : 32, 48 ou 64 caractères hexadécimaux sont lus en hexadécimal, les autres clés comme du texte."
+      },
       "required": false,
-      "default": "celsius",
+      "default": "auto",
       "options": [
-        { "value": "celsius", "label": { "en": "Celsius", "fr": "Celsius" } },
-        { "value": "fahrenheit", "label": { "en": "Fahrenheit", "fr": "Fahrenheit" } }
+        {
+          "value": "auto",
+          "label": {
+            "en": "Automatic",
+            "fr": "Automatique"
+          }
+        },
+        {
+          "value": "ascii",
+          "label": {
+            "en": "Text (ASCII)",
+            "fr": "Texte (ASCII)"
+          }
+        },
+        {
+          "value": "hex",
+          "label": {
+            "en": "Hexadecimal",
+            "fr": "Hexadécimal"
+          }
+        }
       ]
     },
     {
-      "key": "poll_frequency",
+      "key": "ping_interval",
       "type": "number",
-      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "label": {
+        "en": "Periodic test interval of the hub (min)",
+        "fr": "Intervalle du test périodique de la centrale (min)"
+      },
       "description": {
-        "en": "How often sensors are polled, in seconds (one minute minimum).",
-        "fr": "Fréquence d'interrogation des capteurs, en secondes (une minute minimum)."
+        "en": "The interval set in the Ajax app, in minutes (1 to 1440). The hub is shown as silent after two missed tests. 0: no supervision.",
+        "fr": "L'intervalle réglé dans l'application Ajax, en minutes (1 à 1440). La centrale est montrée muette après deux tests manqués. 0 : pas de supervision."
       },
       "required": false,
-      "default": 300,
-      "min": 60,
+      "default": 1,
+      "min": 0,
+      "max": 1440
+    },
+    {
+      "key": "time_skew",
+      "type": "number",
+      "label": {
+        "en": "Allowed clock difference (s)",
+        "fr": "Décalage d'horloge toléré (s)"
+      },
+      "description": {
+        "en": "A message whose time differs more from the Gladys clock is refused, so it cannot be replayed (0 to 3600 s). 0: not checked.",
+        "fr": "Un message dont l'heure s'écarte plus de l'horloge de Gladys est refusé, pour qu'il ne puisse pas être rejoué (0 à 3600 s). 0 : pas de contrôle."
+      },
+      "required": false,
+      "default": 60,
+      "min": 0,
       "max": 3600
+    },
+    {
+      "key": "language",
+      "type": "select",
+      "label": {
+        "en": "Language of the names and texts",
+        "fr": "Langue des noms et des textes"
+      },
+      "description": {
+        "en": "Used for the device and feature names added from now on, and for the last event text.",
+        "fr": "Sert aux noms des appareils et fonctionnalités ajoutés désormais, et au texte du dernier événement."
+      },
+      "required": false,
+      "default": "fr",
+      "options": [
+        {
+          "value": "fr",
+          "label": {
+            "en": "French",
+            "fr": "Français"
+          }
+        },
+        {
+          "value": "en",
+          "label": {
+            "en": "English",
+            "fr": "Anglais"
+          }
+        }
+      ]
     }
   ],
   "actions": [
     {
-      "key": "test_weather",
-      "label": { "en": "Test the weather provider", "fr": "Tester le fournisseur météo" },
-      "timeout_seconds": 30
+      "key": "status",
+      "label": {
+        "en": "Show the receiver status",
+        "fr": "Afficher l'état du récepteur"
+      },
+      "timeout_seconds": 15
     },
     {
-      "key": "identify",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "fields": [
-        {
-          "key": "device",
-          "type": "select",
-          "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
-        }
-      ]
+      "key": "clear",
+      "label": {
+        "en": "Clear the alarm and fault memory",
+        "fr": "Effacer la mémoire des alarmes et défauts"
+      },
+      "timeout_seconds": 15
     }
   ],
   "scene_triggers": [
     {
-      "key": "motion_detected",
-      "label": { "en": "Motion detected", "fr": "Mouvement détecté" },
+      "key": "alarm",
+      "label": {
+        "en": "Ajax alarm",
+        "fr": "Alarme Ajax"
+      },
       "description": {
-        "en": "A demo motion sensor saw a person or an animal move.",
-        "fr": "Un détecteur de démonstration a vu bouger une personne ou un animal."
+        "en": "The hub reports an alarm: intrusion, fire, gas, water leak, panic button, duress code…",
+        "fr": "La centrale signale une alarme : intrusion, incendie, gaz, fuite d'eau, bouton panique, code sous contrainte…"
       },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Sensor", "fr": "Détecteur" }
+          "label": {
+            "en": "Hub",
+            "fr": "Centrale"
+          }
         },
         {
-          "key": "target",
-          "type": "multi_select",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" },
+          "key": "kind",
+          "type": "select",
+          "label": {
+            "en": "Kind",
+            "fr": "Type"
+          },
           "options": [
-            { "value": "person", "label": { "en": "Person", "fr": "Personne" } },
-            { "value": "animal", "label": { "en": "Animal", "fr": "Animal" } }
+            { "value": "intrusion", "label": { "en": "Intrusion", "fr": "Intrusion" } },
+            { "value": "fire", "label": { "en": "Fire", "fr": "Incendie" } },
+            { "value": "heat", "label": { "en": "Heat", "fr": "Chaleur" } },
+            { "value": "gas", "label": { "en": "Gas (CO)", "fr": "Gaz (CO)" } },
+            { "value": "water", "label": { "en": "Water leak", "fr": "Fuite d'eau" } },
+            { "value": "panic", "label": { "en": "Panic", "fr": "Panique" } },
+            { "value": "medical", "label": { "en": "Medical", "fr": "Urgence médicale" } },
+            { "value": "duress", "label": { "en": "Duress", "fr": "Contrainte" } },
+            {
+              "value": "code_tamper",
+              "label": { "en": "Code guessing", "fr": "Code deviné" }
+            },
+            { "value": "freeze", "label": { "en": "Freeze", "fr": "Gel" } }
           ]
         }
       ],
       "variables": [
+        { "key": "account", "type": "string", "label": { "en": "Account", "fr": "Compte" } },
+        { "key": "kind", "type": "string", "label": { "en": "Kind", "fr": "Type" } },
+        { "key": "code", "type": "string", "label": { "en": "SIA code", "fr": "Code SIA" } },
         {
-          "key": "target",
+          "key": "zone",
+          "type": "number",
+          "label": { "en": "Device number (0: hub)", "fr": "Numéro d'appareil (0 : centrale)" }
+        },
+        { "key": "group", "type": "number", "label": { "en": "Group", "fr": "Groupe" } },
+        {
+          "key": "user",
+          "type": "number",
+          "label": { "en": "User (duress)", "fr": "Utilisateur (contrainte)" }
+        },
+        { "key": "mode", "type": "string", "label": { "en": "Mode", "fr": "Mode" } },
+        {
+          "key": "description",
           "type": "string",
-          "label": { "en": "What moved", "fr": "Ce qui a bougé" }
+          "label": { "en": "Description", "fr": "Description" }
         }
       ]
-    }
-  ],
-  "scene_actions": [
+    },
     {
-      "key": "identify_device",
-      "label": { "en": "Identify a device", "fr": "Identifier un appareil" },
-      "description": {
-        "en": "Make a device signal itself (the demo light blinks).",
-        "fr": "Fait se signaler un appareil (la lampe de démonstration clignote)."
+      "key": "mode_changed",
+      "label": {
+        "en": "Ajax arming changed",
+        "fr": "Armement Ajax changé"
       },
-      "timeout_seconds": 15,
+      "description": {
+        "en": "The hub was armed, set to night mode, had groups armed or was disarmed (keyfob, keypad, app, schedule).",
+        "fr": "La centrale a été armée, mise en mode nuit, a eu des groupes armés ou a été désarmée (télécommande, clavier, application, programmation)."
+      },
       "fields": [
         {
           "key": "device",
           "type": "select",
           "source": "devices",
-          "label": { "en": "Device", "fr": "Appareil" },
-          "required": true
+          "label": {
+            "en": "Hub",
+            "fr": "Centrale"
+          }
+        },
+        {
+          "key": "mode",
+          "type": "select",
+          "label": {
+            "en": "New mode",
+            "fr": "Nouveau mode"
+          },
+          "options": [
+            { "value": "disarmed", "label": { "en": "Disarmed", "fr": "Désarmée" } },
+            { "value": "armed", "label": { "en": "Armed", "fr": "Armée" } },
+            { "value": "night", "label": { "en": "Night mode", "fr": "Mode nuit" } },
+            { "value": "partial", "label": { "en": "Groups armed", "fr": "Groupes armés" } }
+          ]
         }
       ],
-      "outputs": [
+      "variables": [
+        { "key": "account", "type": "string", "label": { "en": "Account", "fr": "Compte" } },
+        { "key": "mode", "type": "string", "label": { "en": "New mode", "fr": "Nouveau mode" } },
         {
-          "key": "signalled",
-          "type": "boolean",
-          "label": { "en": "Device signalled", "fr": "Appareil signalé" }
+          "key": "previous_mode",
+          "type": "string",
+          "label": { "en": "Previous mode", "fr": "Mode précédent" }
+        },
+        { "key": "code", "type": "string", "label": { "en": "SIA code", "fr": "Code SIA" } },
+        { "key": "user", "type": "number", "label": { "en": "User", "fr": "Utilisateur" } },
+        { "key": "group", "type": "number", "label": { "en": "Group", "fr": "Groupe" } },
+        {
+          "key": "description",
+          "type": "string",
+          "label": { "en": "Description", "fr": "Description" }
         }
       ]
-    }
-  ],
-  "widgets": [
+    },
     {
-      "key": "demo_status",
-      "label": { "en": "Demo status", "fr": "État de la démo" },
-      "description": {
-        "en": "Live temperature and plug power, plug connection and observed location.",
-        "fr": "Température et puissance en direct, connexion de la prise, position observée."
+      "key": "fault",
+      "label": {
+        "en": "Ajax fault",
+        "fr": "Défaut Ajax"
       },
-      "icon": "activity",
-      "action_timeout_seconds": 15
+      "description": {
+        "en": "The hub reports a fault (tamper, low battery, power cut, lost device, interference…) or stops reporting.",
+        "fr": "La centrale signale un défaut (autoprotection, pile faible, coupure de courant, appareil perdu, brouillage…) ou ne donne plus de nouvelles."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Hub",
+            "fr": "Centrale"
+          }
+        },
+        {
+          "key": "kind",
+          "type": "select",
+          "label": {
+            "en": "Kind",
+            "fr": "Type"
+          },
+          "options": [
+            { "value": "tamper", "label": { "en": "Tamper", "fr": "Autoprotection" } },
+            { "value": "battery", "label": { "en": "Battery", "fr": "Batterie" } },
+            { "value": "power", "label": { "en": "Power", "fr": "Alimentation" } },
+            { "value": "link", "label": { "en": "Connection", "fr": "Liaison" } },
+            { "value": "offline", "label": { "en": "Hub silent", "fr": "Centrale muette" } },
+            { "value": "other", "label": { "en": "Other fault", "fr": "Autre défaut" } }
+          ]
+        }
+      ],
+      "variables": [
+        { "key": "account", "type": "string", "label": { "en": "Account", "fr": "Compte" } },
+        { "key": "kind", "type": "string", "label": { "en": "Kind", "fr": "Type" } },
+        { "key": "code", "type": "string", "label": { "en": "SIA code", "fr": "Code SIA" } },
+        {
+          "key": "zone",
+          "type": "number",
+          "label": { "en": "Device number (0: hub)", "fr": "Numéro d'appareil (0 : centrale)" }
+        },
+        {
+          "key": "description",
+          "type": "string",
+          "label": { "en": "Description", "fr": "Description" }
+        }
+      ]
+    },
+    {
+      "key": "restore",
+      "label": {
+        "en": "Ajax alarm or fault over",
+        "fr": "Fin d'alarme ou de défaut Ajax"
+      },
+      "description": {
+        "en": "An alarm or a fault ended: restore reported by the hub, disarm, or the hub reporting again.",
+        "fr": "Une alarme ou un défaut a pris fin : rétablissement signalé par la centrale, désarmement, ou la centrale qui donne à nouveau des nouvelles."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Hub",
+            "fr": "Centrale"
+          }
+        },
+        {
+          "key": "kind",
+          "type": "select",
+          "label": {
+            "en": "Kind",
+            "fr": "Type"
+          },
+          "options": [
+            { "value": "intrusion", "label": { "en": "Intrusion", "fr": "Intrusion" } },
+            { "value": "fire", "label": { "en": "Fire", "fr": "Incendie" } },
+            { "value": "heat", "label": { "en": "Heat", "fr": "Chaleur" } },
+            { "value": "gas", "label": { "en": "Gas (CO)", "fr": "Gaz (CO)" } },
+            { "value": "water", "label": { "en": "Water leak", "fr": "Fuite d'eau" } },
+            { "value": "panic", "label": { "en": "Panic", "fr": "Panique" } },
+            { "value": "medical", "label": { "en": "Medical", "fr": "Urgence médicale" } },
+            { "value": "duress", "label": { "en": "Duress", "fr": "Contrainte" } },
+            {
+              "value": "code_tamper",
+              "label": { "en": "Code guessing", "fr": "Code deviné" }
+            },
+            { "value": "freeze", "label": { "en": "Freeze", "fr": "Gel" } },
+            { "value": "tamper", "label": { "en": "Tamper", "fr": "Autoprotection" } },
+            { "value": "battery", "label": { "en": "Battery", "fr": "Batterie" } },
+            { "value": "power", "label": { "en": "Power", "fr": "Alimentation" } },
+            { "value": "link", "label": { "en": "Connection", "fr": "Liaison" } },
+            { "value": "offline", "label": { "en": "Hub silent", "fr": "Centrale muette" } }
+          ]
+        }
+      ],
+      "variables": [
+        { "key": "account", "type": "string", "label": { "en": "Account", "fr": "Compte" } },
+        { "key": "kind", "type": "string", "label": { "en": "Kind", "fr": "Type" } },
+        { "key": "code", "type": "string", "label": { "en": "SIA code", "fr": "Code SIA" } },
+        {
+          "key": "zone",
+          "type": "number",
+          "label": { "en": "Device number (0: hub)", "fr": "Numéro d'appareil (0 : centrale)" }
+        },
+        {
+          "key": "description",
+          "type": "string",
+          "label": { "en": "Description", "fr": "Description" }
+        }
+      ]
+    },
+    {
+      "key": "sia_event",
+      "label": {
+        "en": "Any Ajax event",
+        "fr": "Tout événement Ajax"
+      },
+      "description": {
+        "en": "Every event the hub sends (periodic tests excepted), filtered by SIA code if you want, e.g. BA, CL, SM.",
+        "fr": "Chaque événement envoyé par la centrale (sauf les tests périodiques), filtré par code SIA si vous voulez, par exemple BA, CL, SM."
+      },
+      "fields": [
+        {
+          "key": "device",
+          "type": "select",
+          "source": "devices",
+          "label": {
+            "en": "Hub",
+            "fr": "Centrale"
+          }
+        },
+        {
+          "key": "code",
+          "type": "string",
+          "label": {
+            "en": "SIA code (two letters)",
+            "fr": "Code SIA (deux lettres)"
+          }
+        }
+      ],
+      "variables": [
+        { "key": "account", "type": "string", "label": { "en": "Account", "fr": "Compte" } },
+        { "key": "code", "type": "string", "label": { "en": "SIA code", "fr": "Code SIA" } },
+        {
+          "key": "zone",
+          "type": "number",
+          "label": { "en": "Device number (0: hub)", "fr": "Numéro d'appareil (0 : centrale)" }
+        },
+        { "key": "user", "type": "number", "label": { "en": "User", "fr": "Utilisateur" } },
+        { "key": "group", "type": "number", "label": { "en": "Group", "fr": "Groupe" } },
+        { "key": "text", "type": "string", "label": { "en": "Text", "fr": "Texte" } },
+        {
+          "key": "description",
+          "type": "string",
+          "label": { "en": "Description", "fr": "Description" }
+        }
+      ]
     }
   ]
 }
