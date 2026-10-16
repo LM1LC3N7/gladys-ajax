@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-16
+
 ### Added
 
 - Ajax Systems alarms locally, over SIA DC-09: Gladys is the monitoring
@@ -32,4 +34,5 @@ the notes of the version's GitHub Release.
 - "Show the receiver status" and "Clear the alarm and fault memory" buttons.
 - The state learned from the events is kept across restarts.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/commits/main
+[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-ajax/releases/tag/v0.1.1
