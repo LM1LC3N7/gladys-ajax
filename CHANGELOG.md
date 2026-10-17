@@ -10,6 +10,11 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Added
+
+- LICENSE file (Apache-2.0, as declared in package.json), also copied into the
+  image.
+
 ## [0.1.1] - 2026-10-16
 
 ### Added
