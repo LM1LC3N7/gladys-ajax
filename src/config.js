@@ -3,6 +3,7 @@
 // environment of the receiver sub-container derived from it.
 // -----------------------------------------------------------------------------
 
+import { CHANNEL_PROTOCOL } from './channel.js';
 import { KEY_FORMATS, PING_INTERVAL, TIME_SKEW } from './constants.js';
 import { parseKey } from './sia/frame.js';
 
@@ -82,6 +83,8 @@ export function receiverEnv(config, token, logLevel) {
     ),
     SIA_TIME_SKEW: String(config.timeSkew),
     CHANNEL_TOKEN: token,
+    // A new protocol changes the env hash: a receiver still on an older image is recreated.
+    CHANNEL_PROTOCOL,
     ...(logLevel ? { LOG_LEVEL: logLevel } : {}),
   };
 }

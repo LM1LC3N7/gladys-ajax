@@ -5,7 +5,8 @@
 //
 //   SIA_ACCOUNTS    JSON [{ "account": "1234", "key": "<hex of the AES key>|''" }]
 //   SIA_TIME_SKEW   allowed clock difference in seconds (0 = not checked)
-//   CHANNEL_TOKEN   the secret the main container says hello with
+//   CHANNEL_TOKEN   the channel secret (never on the wire: HMAC challenge-response)
+//   CHANNEL_PROTOCOL the channel protocol version (only changes the env hash)
 //   SIA_PORT        7777 (TCP and UDP, published by Gladys on host ports)
 //   CHANNEL_PORT    7778 (private network only)
 // -----------------------------------------------------------------------------

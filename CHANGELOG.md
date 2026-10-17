@@ -15,6 +15,23 @@ the notes of the version's GitHub Release.
 - LICENSE file (Apache-2.0, as declared in package.json), also copied into the
   image.
 
+### Security
+
+- The private channel between the receiver and the main container (port 7778)
+  no longer sends its token in clear: both sides prove they know it with a
+  mutual HMAC-SHA256 challenge-response on fresh 16-byte nonces, and the main
+  container accepts nothing before the receiver has proved it. A fake receiver
+  is refused, a recorded handshake cannot be replayed, and an empty secret
+  never connects.
+- Every line the receiver sends after the handshake carries a sequence number
+  and an HMAC-SHA256 with a per-connection key derived from the nonces: an
+  event injected, altered, replayed or reordered on the private network drops
+  the connection instead of reaching Gladys. The content stays readable on the
+  private network (integrity, not confidentiality).
+- The receiver env gains `CHANNEL_PROTOCOL=2`, so a receiver still running the
+  old image is recreated on the first start. The token stays in `/data`:
+  nothing to reconfigure.
+
 ## [0.1.1] - 2026-10-16
 
 ### Added

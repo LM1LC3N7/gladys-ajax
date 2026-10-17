@@ -40,12 +40,16 @@ Ajax hub ──SIA DC-09 (TCP/UDP, AES)──▶ sia-receiver container ──JS
 - **Hand-over**: Gladys joins the main container to the private network of
   the integration, where the sub-container answers as `sia-receiver`. The
   receiver serves a channel there (port 7778, never published): JSON lines,
-  opened by a hello with a token the main container generated and passed in
-  the receiver's environment. The receiver keeps the last 500 messages while
-  the main container is away.
+  protocol 2. Both sides prove they know the token the main container
+  generated and passed in the receiver's environment (mutual HMAC-SHA256
+  challenge-response, 16-byte nonces each side, the token never on the wire),
+  then every receiver line carries a sequence number and an HMAC with a
+  per-connection key: injected, altered or replayed lines drop the
+  connection. The receiver keeps the last 500 messages while the main
+  container is away.
 - **Receiver environment** (`startContainer('sia-receiver', { env })`):
   `SIA_ACCOUNTS` (accounts and the AES key bytes as hex), `SIA_TIME_SKEW`,
-  `CHANNEL_TOKEN`, `LOG_LEVEL`. Gladys recreates the container when it
+  `CHANNEL_TOKEN`, `CHANNEL_PROTOCOL`, `LOG_LEVEL`. Gladys recreates the container when it
   changes; the main container only calls `startContainer` when the receiver
   is not running or its environment changed (fingerprint kept in `/data`).
 - **Protocol**: CRC-16/ARC, `"SIA-DCS"`, `"ADM-CID"` and `"NULL"` messages,

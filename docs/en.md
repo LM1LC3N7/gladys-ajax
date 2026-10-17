@@ -193,7 +193,13 @@ receiver. Without encryption, anyone on the network could send a fake event:
 turn **encryption on**, which also makes the receiver refuse unencrypted
 messages, and keep the clock check (replayed messages are refused). The
 receiver container has no access to Gladys: it only hands the messages to
-the integration over a private network. The key is stored as a secret in
+the integration over a private network. On that internal link the shared
+secret never travels: each side proves it knows it (HMAC-SHA256
+challenge-response on fresh random values at every connection), then every
+message carries an HMAC signature and a sequence number. A fake receiver, or
+an event injected, altered or replayed on that private network, is refused.
+The content of the messages is not hidden there: the protection is about
+authenticity and integrity. The key is stored as a secret in
 Gladys and never logged.
 
 ## Troubleshooting

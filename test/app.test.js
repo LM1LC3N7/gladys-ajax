@@ -5,6 +5,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { AjaxApp } from '../src/app.js';
@@ -297,6 +298,29 @@ test('a restart keeps the learned state and does not restart a running receiver'
   assert.equal(second.starts().length, 0, 'same env, container running');
   assert.equal(second.gladys.fake.lastState(second.ids.feature('mode')), 'night');
   assert.equal(store.data.token, first.channel.options.token);
+});
+
+test('an upgrade from channel protocol 1 recreates the running receiver, same token', async (t) => {
+  // What 0.1.1 stored: the hash of an env without CHANNEL_PROTOCOL.
+  const token = 'a'.repeat(48);
+  const oldEnv = {
+    SIA_ACCOUNTS: JSON.stringify([{ account: '1234', key: '' }]),
+    SIA_TIME_SKEW: '60',
+    CHANNEL_TOKEN: token,
+    LOG_LEVEL: 'debug',
+  };
+  const receiverEnvHash = createHash('sha256').update(JSON.stringify(oldEnv)).digest('hex');
+  const store = new MemoryStore({ token, receiverEnvHash });
+  const { app, starts, channel } = await setup(t, { store, containers: RUNNING });
+  assert.equal(starts().length, 1, 'the receiver on the old image is recreated');
+  const env = starts()[0].body.env;
+  assert.equal(env.CHANNEL_PROTOCOL, '2');
+  // Only the protocol differs: without it, 0.1.1 would have left the receiver alone.
+  const { CHANNEL_PROTOCOL: _protocol, ...withoutProtocol } = env;
+  assert.equal(JSON.stringify(withoutProtocol), JSON.stringify(oldEnv));
+  assert.equal(env.CHANNEL_TOKEN, token, 'no reconfiguration: the token from /data is kept');
+  assert.equal(channel.options.token, token);
+  assert.notEqual(app.data.receiverEnvHash, receiverEnvHash);
 });
 
 test('a configuration change recreates the receiver only when its environment changes', async (t) => {

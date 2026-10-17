@@ -135,6 +135,19 @@ up to date at the end of every milestone.
   the receiver keeps a bounded queue while the main container is away. A
   token (random, kept in `/data`, passed in the receiver env) guards the
   channel. No volume declared.
+- **Channel protocol 2 (after the 0.1.1 review)**: the token went in clear in
+  the hello and the client trusted any `ready`. Now the handshake of
+  LM1LC3N7/gladys-mystrom (mutual HMAC-SHA256 challenge-response, 16-byte
+  nonces each side, nothing accepted before a verified `ready`, 10 s
+  handshake timer, no connection with an empty secret), plus what mystrom
+  does not have: every server line after the challenge is
+  `{ seq, data, mac }` with `mac = HMAC(K, seq|data)`,
+  `K = HMAC(token, session|Ns|Nc)`, `seq` growing by exactly one from 0 (the
+  `ready`). `data` is the JSON string, so the MAC never depends on a
+  re-serialization. Integrity only, no confidentiality (the network is
+  private and the messages hold no secret). `CHANNEL_PROTOCOL: '2'` in the
+  receiver env changes its hash, so `ensureReceiver` recreates a receiver
+  still on the 0.1.1 image; the token stays in `/data`.
 - **Receiver env, recreated only on change**: accounts, key bytes (hex),
   time skew, token, log level go in the env of `startContainer` (secrets
   never in the public manifest, as the SDK README says). Gladys recreates the

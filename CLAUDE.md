@@ -43,7 +43,7 @@ src/model.js          SIA events -> account state and effects (pure)
 src/devices.js        -> Gladys device and states (pure)
 src/config.js         config_schema normalized, the receiver env
 src/store.js          /data/ajax-state.json
-src/channel.js        receiver <-> main: JSON lines, token, queue
+src/channel.js        receiver <-> main: JSON lines, HMAC handshake + MACs, queue
 src/constants.js      manifest keys, receiver, value lists, timings
 src/i18n.js           names and texts (fr/en), SIA code labels
 src/receiver.js       sub-container entry point
@@ -76,6 +76,10 @@ e2e/                  Docker check of the real image
   manifest, never send it on the channel.
 - The receiver has no Gladys credentials; the channel port (7778) is never
   published; only the main container (which knows the token) reads it.
+  Channel protocol 2: mutual HMAC challenge-response (the token never on the
+  wire), then `{ seq, data, mac }` on every receiver line; a change of the
+  protocol bumps `CHANNEL_PROTOCOL` in `receiverEnv` so old receivers are
+  recreated. Never call the channel encrypted: it is authenticated only.
 - Value conventions: the Gladys side uses the enums of the core
   `server/utils/constants.js` (binary 1 = on; `mains-power`, `device-link`
   and `online` are 1 when OK), the SDK does not export them.

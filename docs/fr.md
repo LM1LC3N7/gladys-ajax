@@ -212,7 +212,12 @@ pourrait envoyer un faux événement : **activez le chiffrement**, qui fait
 aussi refuser les messages non chiffrés, et gardez le contrôle d'horloge (les
 messages rejoués sont refusés). Le conteneur récepteur n'a aucun accès à
 Gladys : il passe seulement les messages à l'intégration sur un réseau
-privé. La clé est stockée comme secret dans Gladys et n'apparaît jamais dans
+privé. Sur ce lien interne, le secret partagé ne circule jamais : chaque côté
+prouve qu'il le connaît (défi-réponse HMAC-SHA256 avec des valeurs aléatoires
+neuves à chaque connexion), et chaque message porte ensuite une signature
+HMAC et un numéro d'ordre. Un faux récepteur, ou un événement injecté, modifié
+ou rejoué sur ce réseau privé, est refusé. Le contenu des messages n'y est pas
+caché pour autant : la protection porte sur l'authenticité et l'intégrité. La clé est stockée comme secret dans Gladys et n'apparaît jamais dans
 les journaux.
 
 ## Dépannage

@@ -56,6 +56,7 @@ test('the receiver env carries the key bytes as hex, read back by the receiver',
   });
   const env = receiverEnv(config, 'tok', 'info');
   assert.deepEqual(Object.keys(env).sort(), [
+    'CHANNEL_PROTOCOL',
     'CHANNEL_TOKEN',
     'LOG_LEVEL',
     'SIA_ACCOUNTS',
@@ -65,6 +66,7 @@ test('the receiver env carries the key bytes as hex, read back by the receiver',
   assert.deepEqual([...accounts.keys()], ['1234', 'AB12']);
   assert.equal(accounts.get('1234').key.toString('latin1'), 'Sixteen chars!!!');
   assert.equal(env.SIA_TIME_SKEW, '20');
+  assert.equal(env.CHANNEL_PROTOCOL, '2', 'protocol 2: a receiver on the old image is recreated');
   assert.equal(receiverEnv(normalizeConfig({ accounts: '1234' }), 'tok').LOG_LEVEL, undefined);
   assert.equal(
     JSON.parse(receiverEnv(normalizeConfig({ accounts: '1234' }), 'tok').SIA_ACCOUNTS)[0].key,
