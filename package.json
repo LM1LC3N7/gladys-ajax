@@ -1,6 +1,6 @@
 {
   "name": "gladys-ajax",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Gladys Assistant external integration for Ajax Systems alarms, locally over SIA DC-09 (Gladys acts as the monitoring station). Unofficial, not affiliated with Ajax Systems.",
   "type": "module",
