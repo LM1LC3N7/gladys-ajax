@@ -85,6 +85,13 @@ up to date at the end of every milestone.
 
 ## Decisions
 
+- **SDK `^0.16.0`** (2026-11-03, migration wave 6): it adds the ai, tts and
+  music types; no effect here (`poll_frequency` unused, the devices carry
+  `should_poll: false`). Every feature already had a numeric `min` and `max`
+  (text and select 0/0, binary 0/1); `test/helpers/coreFeature.js` now checks each one
+  against the core model. `npm test` runs with `--test-timeout=60000`.
+  `keywords`, `countries` and `gladys_version >= 5.3.0` wait until Gladys 5.3
+  is widespread.
 - **Not a duplicate** (checked 2026-10-16): the Gladys core master
   (0027571, 2026-10-16, 39 services) has nothing for Ajax or SIA
   (`server/services` and `front/src` have no `sia`, `ajax`, `dc09` file). The

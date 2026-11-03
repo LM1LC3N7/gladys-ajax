@@ -20,7 +20,7 @@ Systems.
 
 ```bash
 npm install
-npm test                                  # node --test, the built-in runner
+npm test                                  # node --test --test-timeout=60000
 node --test test/receiver.test.js         # one file
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
@@ -60,6 +60,11 @@ e2e/                  Docker check of the real image
 
 ## Rules
 
+- **Features follow the core model.** Every feature has a numeric `min` and
+  `max` (0/0 for text), `read_only` and `has_feedback`: Gladys answers HTTP 422
+  otherwise, and the SDK's fake Gladys does not check it
+  (`test/helpers/coreFeature.js` does). Devices carry `should_poll: false`
+  (Gladys 5.3 polls a device with `poll_frequency` unless it says so).
 - **External ids are forever**: device `hub:<account>`; features `mode`,
   `alarm`, `tamper`, `battery-low`, `mains-power`, `device-link`, `online`,
   `armed-groups`, `last-event`. Never change how they are built.

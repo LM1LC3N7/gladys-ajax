@@ -4,6 +4,7 @@ import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { FEATURES, accountStates, buildDevice, parseExternalId } from '../src/devices.js';
 import { codeLabel, eventText } from '../src/i18n.js';
 import { applyEvent, emptyState } from '../src/model.js';
+import { assertCoreDevice } from './helpers/coreFeature.js';
 
 const gladys = createFakeGladys();
 
@@ -71,4 +72,11 @@ test('event texts: Ajax labels, SIA types for the rest', () => {
     eventText({ code: 'OP', zone: null, user: 3, group: null }, 'fr'),
     'Désarmée, utilisateur 3 (OP)',
   );
+});
+
+test('every feature, in both languages, has a numeric min and max and the other core fields', () => {
+  for (const language of ['en', 'fr']) {
+    const device = buildDevice(gladys, 'AB12', language);
+    assert.equal(assertCoreDevice(device, language), Object.keys(FEATURES).length);
+  }
 });
