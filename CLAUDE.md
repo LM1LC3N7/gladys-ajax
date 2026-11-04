@@ -8,7 +8,7 @@ already taken and the next milestones.
 
 A Gladys Assistant **external integration** of type `device`: a Node.js
 service (Node 22+, ESM, no build step) in its own sandboxed Docker container,
-talking to Gladys through `@gladysassistant/integration-sdk` (v0.15), its only
+talking to Gladys through `@gladysassistant/integration-sdk` (v0.16), its only
 runtime dependency. Gladys becomes the SIA DC-09 monitoring station of Ajax
 Systems hubs: a `sia-receiver` sub-container (same image, `node
 src/receiver.js`) publishes the SIA port, acknowledges the hubs and hands the
