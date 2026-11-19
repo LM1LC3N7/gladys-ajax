@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-19
+
 ### Fixed
 
 - A hub refused for its account (000 when its object number is empty) now gets the account received and the exact steps in the logs and the status; the other refusals are logged too, each at most once an hour while it goes on.
@@ -70,7 +72,8 @@ the notes of the version's GitHub Release.
 - "Show the receiver status" and "Clear the alarm and fault memory" buttons.
 - The state learned from the events is kept across restarts.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.1...v0.1.2
