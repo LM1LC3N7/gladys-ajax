@@ -217,3 +217,4 @@ up to date at the end of every milestone.
 - **One-way**: `onSetValue` refuses; no scene action. Arming from Gladys would
   need the Ajax cloud (homebridge-ajax-sia's unofficial gRPC client): out of
   scope, said in the docs.
+- [ ] r2 mineur : test de deux motifs de refus sur le même compte (un avertissement chacun, mutant N6, app.js:246).
