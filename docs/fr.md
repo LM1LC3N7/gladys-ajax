@@ -227,8 +227,15 @@ les journaux.
   l'application Ajax, que le centre de télésurveillance est activé sur un
   canal qui joint votre réseau, et qu'aucun pare-feu ne bloque le port sur la
   machine de Gladys.
-- **« Unknown account … »** (bouton d'état, journaux) : le numéro d'objet
-  réglé sur la centrale n'est pas dans « Numéro(s) de compte ».
+- **« Une centrale envoie le compte … absent de la configuration »** (statut,
+  journaux) ou **« Unknown account … »** (bouton d'état) : le numéro d'objet
+  réglé sur la centrale n'est pas dans « Numéro(s) de compte ». Le compte
+  **000** est ce qu'envoie une centrale Ajax dont le numéro d'objet est vide :
+  saisissez un numéro (par exemple 1234) dans « Numéro d'objet » de
+  l'application Ajax (paramètres de l'espace → Sociétés de sécurité → Centre
+  de télésurveillance) et le même dans la configuration, ou mettez 000 dans
+  la configuration. Un compte absent de la configuration est toujours
+  refusé.
 - **« Decryption failed (wrong key?) »**, **« no encryption key is
   configured »** ou **« Unencrypted message … refused »** : la clé ou
   l'activation du chiffrement diffère entre la centrale et Gladys.

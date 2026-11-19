@@ -189,6 +189,29 @@ export const MESSAGES = {
     fr: (accounts) =>
       `Aucun message de la centrale ${accounts} dans l'intervalle du test périodique.`,
   },
+  // `configured`: the account numbers in the configuration (array).
+  unknownAccount: {
+    en: (account, configured) =>
+      `A hub sends account ${account}, which is not in the configuration (configured: ${
+        configured.join(', ') || 'none'
+      }): its messages are refused. Either set "Object number" to ${
+        configured.length === 1 ? configured[0] : 'one of the configured numbers'
+      } in the Ajax app (space settings → Security companies → Monitoring station), or add ${account} to "Account number(s)" in the configuration of this integration.${
+        /^0+$/.test(account)
+          ? ` ${account} is what an Ajax hub sends when its object number is empty.`
+          : ''
+      }`,
+    fr: (account, configured) =>
+      `Une centrale envoie le compte ${account}, absent de la configuration (configuré : ${
+        configured.join(', ') || 'aucun'
+      }) : ses messages sont refusés. Saisissez ${
+        configured.length === 1 ? configured[0] : "l'un des numéros configurés"
+      } dans « Numéro d'objet » de l'application Ajax (paramètres de l'espace → Sociétés de sécurité → Centre de télésurveillance), ou ajoutez ${account} à « Numéro(s) de compte » dans la configuration de cette intégration.${
+        /^0+$/.test(account)
+          ? ` ${account} est ce qu'envoie une centrale Ajax dont le numéro d'objet est vide.`
+          : ''
+      }`,
+  },
   cleared: {
     en: (count) => `Alarm and fault memory cleared (${count} hub${count > 1 ? 's' : ''}).`,
     fr: (count) =>

@@ -10,6 +10,10 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- A hub refused for its account (000 when its object number is empty) now gets the account received and the exact steps in the logs and the status; the other refusals are logged too.
+
 ## [0.1.4] - 2026-11-03
 
 ### Changed

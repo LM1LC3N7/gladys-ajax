@@ -232,3 +232,28 @@ test('a NULL link test is acknowledged with no event', () => {
   assert.equal(parseReply(result.reply).verdict, 'ACK');
   assert.deepEqual(result.message.events, []);
 });
+
+test('account 000: accepted only when configured, never 0000 or 0 for it', () => {
+  const event = (account, type = 'SIA-DCS', content = '|Nri1/CL1]') =>
+    receiver({ accounts: { '000': null } }).receive(
+      buildLine({ account, type, content, timestamp: at(0) }),
+    );
+  const accepted = event('000');
+  assert.equal(parseReply(accepted.reply).verdict, 'ACK');
+  assert.equal(parseReply(accepted.reply).account, '000');
+  assert.equal(accepted.message.account, '000');
+  assert.equal(parseReply(event('000', 'NULL', ']').reply).verdict, 'ACK');
+  for (const other of ['0000', '00000', '1234']) {
+    const refused = event(other);
+    assert.equal(parseReply(refused.reply).verdict, 'NAK');
+    assert.equal(refused.reason, 'unknown_account');
+    assert.equal(refused.account, other);
+  }
+  // Not configured: a link test on 000 is refused like any other message.
+  const ping = receiver().receive(
+    buildLine({ account: '000', type: 'NULL', content: ']', timestamp: at(0) }),
+  );
+  assert.equal(parseReply(ping.reply).verdict, 'NAK');
+  assert.equal(ping.reason, 'unknown_account');
+  assert.equal(ping.account, '000');
+});

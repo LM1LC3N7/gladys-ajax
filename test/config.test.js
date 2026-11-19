@@ -79,3 +79,16 @@ test('the receiver reads a broken SIA_ACCOUNTS as no account', () => {
   assert.equal(parseAccountsEnv('{"a":1}').size, 0);
   assert.equal(parseAccountsEnv(undefined).size, 0);
 });
+
+test('accounts: 000 and leading zeros are kept as typed, up to the receiver env', () => {
+  assert.deepEqual(parseAccounts('000, 0012 #0000'), {
+    valid: ['000', '0012', '0000'],
+    invalid: [],
+  });
+  assert.deepEqual(parseAccounts('0 00'), { valid: [], invalid: ['0', '00'] });
+  const config = normalizeConfig({ accounts: '000' });
+  assert.deepEqual(config.accounts, ['000']);
+  const env = receiverEnv(config, 'token');
+  assert.deepEqual(JSON.parse(env.SIA_ACCOUNTS), [{ account: '000', key: '' }]);
+  assert.deepEqual([...parseAccountsEnv(env.SIA_ACCOUNTS).keys()], ['000']);
+});

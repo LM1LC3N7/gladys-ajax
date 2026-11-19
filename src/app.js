@@ -55,7 +55,7 @@ export class AjaxApp {
     this.data = null;
     this.published = new Map();
     this.lastFullPublish = 0;
-    this.receiver = { error: null, info: null, lastRejection: null };
+    this.receiver = { error: null, info: null, lastRejection: null, unknownAccount: null };
     this.connection = null;
     this.sceneEventTimes = [];
     this.chain = Promise.resolve();
@@ -225,10 +225,15 @@ export class AjaxApp {
       await this.onPanelMessage(message);
     } else if (message?.type === 'rejected') {
       this.receiver.lastRejection = message;
-      if (message.reason === 'unknown_account' && message.account) {
-        this.logger?.warn(
-          `A panel reports with account ${message.account}, which is not in the configuration: add it there`,
-        );
+      const account = String(message.account ?? '').toUpperCase();
+      if (message.reason === 'unknown_account' && account) {
+        // Refused by a receiver still on the previous configuration: nothing to fix.
+        if (this.config.accounts.includes(account)) return;
+        this.receiver.unknownAccount = { account, at: this.now().getTime() };
+        this.logger?.warn(MESSAGES.unknownAccount.en(account, this.config.accounts));
+        await this.updateConnectionStatus();
+      } else if (message.problem && account) {
+        this.logger?.warn(`A message of a hub was refused: ${message.problem}`);
       }
     } else if (message?.type === 'status') {
       this.receiver.info = message;
@@ -325,6 +330,14 @@ export class AjaxApp {
     await this.updateConnectionStatus();
   }
 
+  /** A hub refused for its account lately, an account still not configured. */
+  unknownAccountRecent() {
+    const refused = this.receiver.unknownAccount;
+    if (!refused || this.config.accounts.includes(refused.account)) return false;
+    const age = this.now().getTime() - refused.at;
+    return age >= 0 && age <= TIMINGS.unknownAccountStatus;
+  }
+
   async updateConnectionStatus() {
     const { accounts, keyError } = this.config;
     let status;
@@ -336,6 +349,9 @@ export class AjaxApp {
       status = [false, localized(MESSAGES.receiverError, this.receiver.error)];
     } else if (!this.channel?.connected) {
       status = [false, MESSAGES.receiverDown];
+    } else if (this.unknownAccountRecent()) {
+      const { account } = this.receiver.unknownAccount;
+      status = [false, localized(MESSAGES.unknownAccount, account, accounts)];
     } else {
       const neverSeen = accounts.filter((account) => !this.data.accounts[account]?.lastSeen);
       const silent = accounts.filter(

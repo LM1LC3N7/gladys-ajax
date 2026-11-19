@@ -10,6 +10,10 @@ import { EventEmitter } from 'node:events';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { AjaxApp } from '../src/app.js';
 import { registerHandlers } from '../src/handlers.js';
+import { MESSAGES } from '../src/i18n.js';
+
+const MESSAGES_unknown = (language, account, configured) =>
+  MESSAGES.unknownAccount[language](account, configured);
 
 class FakeChannel extends EventEmitter {
   constructor(options) {
@@ -61,7 +65,12 @@ const RUNNING = [
 
 async function setup(
   t,
-  { config = { accounts: '1234' }, containers = [], store = new MemoryStore() } = {},
+  {
+    config = { accounts: '1234' },
+    containers = [],
+    store = new MemoryStore(),
+    logger = undefined,
+  } = {},
 ) {
   const gladys = createFakeGladys({ config, containers });
   const clock = { now: T0 };
@@ -76,6 +85,7 @@ async function setup(
     },
     now: () => clock.now,
     logLevel: 'debug',
+    ...(logger ? { logger } : {}),
   });
   registerHandlers(gladys, app);
   await gladys.connect();
@@ -380,6 +390,127 @@ test('refusals: a panel with an unknown account shows in the status button', asy
   assert.match(text.en, /Hub 1234: disarmed, silent, last message never/);
   assert.match(text.en, /Last refusal: Unknown account 9999/);
   assert.match(text.fr, /Centrale 1234 : disarmed/);
+});
+
+const recordingLogger = () => {
+  const warnings = [];
+  const noop = () => {};
+  return { warnings, warn: (text) => warnings.push(text), info: noop, debug: noop, error: noop };
+};
+
+test('refusals: account 000 (empty object number) names the account and the steps', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel, clock } = await setup(t, { containers: RUNNING, logger });
+  channel.up();
+  await app.onChannelMessage({
+    type: 'rejected',
+    reason: 'unknown_account',
+    account: '000',
+    problem: 'Unknown account 000: add it to the configuration',
+  });
+  const [warning] = logger.warnings;
+  assert.match(
+    warning,
+    /A hub sends account 000, which is not in the configuration \(configured: 1234\)/,
+  );
+  assert.match(warning, /set "Object number" to 1234 in the Ajax app/);
+  assert.match(warning, /add 000 to "Account number\(s\)"/);
+  assert.match(warning, /000 is what an Ajax hub sends when its object number is empty/);
+  const status = gladys.fake.connectionStatus;
+  assert.equal(status.connected, false);
+  assert.match(
+    status.message.fr,
+    /Une centrale envoie le compte 000, absent de la configuration \(configuré : 1234\)/,
+  );
+  assert.match(status.message.fr, /Saisissez 1234 dans « Numéro d'objet »/);
+  assert.match(status.message.fr, /ajoutez 000 à « Numéro\(s\) de compte »/);
+  assert.match(status.message.fr, /numéro d'objet est vide/);
+  assert.match(status.message.en, /set "Object number" to 1234/);
+  // The user adds 000: the status no longer asks for it.
+  await gladys.fake.configUpdated({ accounts: '1234, 000' });
+  await app.updateConnectionStatus();
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /sends account/);
+  await gladys.fake.configUpdated({ accounts: '1234' });
+  await app.updateConnectionStatus();
+  assert.match(gladys.fake.connectionStatus.message.en, /sends account 000/);
+
+  // Still shown at the limit, gone after it: back to waiting for the hub.
+  clock.now = new Date(T0.getTime() + 5 * 60_000);
+  await app.updateConnectionStatus();
+  assert.match(gladys.fake.connectionStatus.message.en, /sends account 000/);
+  clock.now = new Date(T0.getTime() + 5 * 60_000 + 1);
+  await app.updateConnectionStatus();
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /Waiting for the first message of hub 1234/,
+  );
+  // A clock that went back does not bring it back either.
+  clock.now = new Date(T0.getTime() - 1);
+  await app.updateConnectionStatus();
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /Waiting for the first message of hub 1234/,
+  );
+});
+
+test('refusals: another account, several configured, none configured', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    logger,
+    config: { accounts: '1234, 5678' },
+  });
+  channel.up();
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '9999' });
+  assert.match(
+    logger.warnings[0],
+    /account 9999, which is not in the configuration \(configured: 1234, 5678\)/,
+  );
+  assert.match(logger.warnings[0], /to one of the configured numbers in the Ajax app/);
+  assert.doesNotMatch(logger.warnings[0], /object number is empty/);
+  assert.match(gladys.fake.connectionStatus.message.fr, /Saisissez l'un des numéros configurés/);
+  assert.equal(MESSAGES_unknown('en', '000', []).includes('(configured: none)'), true);
+  assert.equal(MESSAGES_unknown('fr', '000', []).includes('(configuré : aucun)'), true);
+});
+
+test('refusals: once the account is configured, its messages count and the status clears', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    logger,
+    config: { accounts: '000' },
+  });
+  channel.up();
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
+  // A refusal reported just before the new configuration: not shown for a configured account.
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /sends account/);
+  await app.onChannelMessage(message([{ code: 'CL', number: 5, group: 1 }], { account: '000' }));
+  const ids = gladys.externalIds('hub', '000');
+  assert.equal(gladys.fake.lastState(ids.feature('mode')), 'armed');
+  await app.updateConnectionStatus();
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.deepEqual(logger.warnings.length, 0);
+});
+
+test('refusals: other reasons are logged with their account, junk without one is not', async (t) => {
+  const logger = recordingLogger();
+  const { app, channel } = await setup(t, { containers: RUNNING, logger });
+  channel.up();
+  await app.onChannelMessage({
+    type: 'rejected',
+    reason: 'key',
+    account: '1234',
+    problem: 'Account 1234: Decryption failed (wrong key?)',
+  });
+  await app.onChannelMessage({ type: 'rejected', reason: 'format', problem: 'Not a DC-09 frame' });
+  await app.onChannelMessage({
+    type: 'rejected',
+    reason: 'unknown_account',
+    problem: 'Message without an account number',
+  });
+  assert.deepEqual(logger.warnings, [
+    'A message of a hub was refused: Account 1234: Decryption failed (wrong key?)',
+  ]);
 });
 
 test('clear: the alarm and fault memory is emptied', async (t) => {

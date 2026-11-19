@@ -208,8 +208,14 @@ Gladys and never logged.
   Gladys yet. Check the IP address and the port in the Ajax app, that the
   monitoring station is enabled on a channel that reaches your network, and
   that no firewall blocks the port on the Gladys machine.
-- **"Unknown account …"** (status button, logs): the object number set on
-  the hub is not in "Account number(s)".
+- **"A hub sends account … which is not in the configuration"** (status,
+  logs) or **"Unknown account …"** (status button): the object number set on
+  the hub is not in "Account number(s)". Account **000** is what an Ajax hub
+  sends when its object number is empty: enter a number (for example 1234)
+  in "Object number" in the Ajax app (space settings → Security companies →
+  Monitoring station) and the same one in the configuration, or put 000 in
+  the configuration. An account missing from the configuration is always
+  refused.
 - **"Decryption failed (wrong key?)"**, **"no encryption key is configured"**
   or **"Unencrypted message … refused"**: the key or the encryption switch
   differs between the hub and Gladys.

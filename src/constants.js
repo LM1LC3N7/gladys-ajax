@@ -62,6 +62,8 @@ export const TIMINGS = {
   offlineGrace: 30_000,
   /** Messages the receiver kept while this container was away: no scene event past this age. */
   staleEvent: 5 * 60_000,
+  /** The status names an unknown account this long after its last refusal (refusals come once a minute). */
+  unknownAccountStatus: 5 * 60_000,
   /** Every state is published again this often (keeps the values recently dated). */
   stateHeartbeat: 30 * 60_000,
   /** Saving the state to /data waits this long for more changes. */
