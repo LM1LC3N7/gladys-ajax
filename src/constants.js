@@ -64,6 +64,8 @@ export const TIMINGS = {
   staleEvent: 5 * 60_000,
   /** The status names an unknown account this long after its last refusal (refusals come once a minute). */
   unknownAccountStatus: 5 * 60_000,
+  /** A refusal that goes on is logged again this often (the receiver reports it once a minute). */
+  refusalLog: 60 * 60_000,
   /** Every state is published again this often (keeps the values recently dated). */
   stateHeartbeat: 30 * 60_000,
   /** Saving the state to /data waits this long for more changes. */

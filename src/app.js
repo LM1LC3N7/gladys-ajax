@@ -56,6 +56,7 @@ export class AjaxApp {
     this.published = new Map();
     this.lastFullPublish = 0;
     this.receiver = { error: null, info: null, lastRejection: null, unknownAccount: null };
+    this.refusalsLogged = new Map();
     this.connection = null;
     this.sceneEventTimes = [];
     this.chain = Promise.resolve();
@@ -226,14 +227,27 @@ export class AjaxApp {
     } else if (message?.type === 'rejected') {
       this.receiver.lastRejection = message;
       const account = String(message.account ?? '').toUpperCase();
+      const now = this.now().getTime();
+      // A refusal kept in the channel queue keeps its own date (never in the future).
+      const sent = Date.parse(message.at ?? '');
+      const at = Number.isNaN(sent) ? now : Math.min(now, sent);
       if (message.reason === 'unknown_account' && account) {
         // Refused by a receiver still on the previous configuration: nothing to fix.
-        if (this.config.accounts.includes(account)) return;
-        this.receiver.unknownAccount = { account, at: this.now().getTime() };
-        this.logger?.warn(MESSAGES.unknownAccount.en(account, this.config.accounts));
+        if (this.config.accounts.includes(account)) {
+          this.logger?.debug(`Account ${account} refused by the previous receiver configuration`);
+          return;
+        }
+        this.receiver.unknownAccount = { account, at };
+        this.logRefusal(`unknown_account:${account}`, now, () =>
+          MESSAGES.unknownAccount.en(account, this.config.accounts),
+        );
         await this.updateConnectionStatus();
       } else if (message.problem && account) {
-        this.logger?.warn(`A message of a hub was refused: ${message.problem}`);
+        this.logRefusal(
+          `${message.reason}:${account}`,
+          now,
+          () => `A message of a hub was refused: ${message.problem}`,
+        );
       }
     } else if (message?.type === 'status') {
       this.receiver.info = message;
@@ -330,12 +344,29 @@ export class AjaxApp {
     await this.updateConnectionStatus();
   }
 
+  /** One warning per refusal (reason, account), then at most one per hour while it goes on. */
+  logRefusal(key, now, text) {
+    const last = this.refusalsLogged.get(key);
+    if (last !== undefined && now - last >= 0 && now - last < TIMINGS.refusalLog) {
+      this.logger?.debug(text());
+      return;
+    }
+    if (this.refusalsLogged.size >= 256) this.refusalsLogged.clear();
+    this.refusalsLogged.set(key, now);
+    this.logger?.warn(text());
+  }
+
   /** A hub refused for its account lately, an account still not configured. */
   unknownAccountRecent() {
     const refused = this.receiver.unknownAccount;
     if (!refused || this.config.accounts.includes(refused.account)) return false;
     const age = this.now().getTime() - refused.at;
-    return age >= 0 && age <= TIMINGS.unknownAccountStatus;
+    // Refusals come with the periodic test: the window covers two of them, as isOnline.
+    const window = Math.max(
+      TIMINGS.unknownAccountStatus,
+      2 * this.config.pingInterval * 60_000 + TIMINGS.offlineGrace,
+    );
+    return age >= 0 && age <= window;
   }
 
   async updateConnectionStatus() {

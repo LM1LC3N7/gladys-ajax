@@ -257,3 +257,19 @@ test('account 000: accepted only when configured, never 0000 or 0 for it', () =>
   assert.equal(ping.reason, 'unknown_account');
   assert.equal(ping.account, '000');
 });
+
+test('account 000 encrypted: exact match only, never 0000 for 000', () => {
+  const r = receiver({ accounts: { '000': KEY } });
+  const send = (account) =>
+    r.receive(buildLine({ account, key: KEY, content: '|Nri1/CL1]', timestamp: at(0) }));
+  const accepted = send('000');
+  assert.equal(accepted.message?.account, '000');
+  for (const other of ['0000', '00000', '1234']) {
+    const refused = send(other);
+    assert.equal(refused.reason, 'unknown_account');
+    assert.equal(refused.account, other);
+  }
+  const wide = receiver({ accounts: { '0000': KEY } });
+  const narrow = wide.receive(buildLine({ account: '000', key: KEY, timestamp: at(0) }));
+  assert.equal(narrow.reason, 'unknown_account');
+});

@@ -513,6 +513,66 @@ test('refusals: other reasons are logged with their account, junk without one is
   ]);
 });
 
+test('refusals: one warning per refused account, then at most one per hour', async (t) => {
+  const logger = recordingLogger();
+  const { app, channel, clock } = await setup(t, { containers: RUNNING, logger });
+  channel.up();
+  const refuse = (account, reason = 'unknown_account') =>
+    app.onChannelMessage({ type: 'rejected', reason, account, problem: `${reason} ${account}` });
+  const at = (minutes) => (clock.now = new Date(T0.getTime() + minutes * 60_000));
+  await refuse('000');
+  await refuse('9999');
+  await refuse('1234', 'key');
+  assert.equal(logger.warnings.length, 3);
+  at(1);
+  await refuse('000');
+  await refuse('1234', 'key');
+  at(59);
+  await refuse('000');
+  assert.equal(logger.warnings.length, 3);
+  at(60);
+  await refuse('000');
+  await refuse('1234', 'key');
+  assert.equal(logger.warnings.length, 5);
+  assert.match(logger.warnings[3], /sends account 000/);
+  assert.equal(logger.warnings[4], 'A message of a hub was refused: key 1234');
+  // A clock set back does not silence the refusal for the hour.
+  at(-1);
+  await refuse('000');
+  assert.equal(logger.warnings.length, 6);
+  // Many accounts: the memory of the warnings stays bounded.
+  for (let n = 0; n < 300; n += 1) await refuse(n.toString(16).padStart(3, '0').toUpperCase());
+  assert.ok(app.refusalsLogged.size <= 256);
+});
+
+test('refusals: dated by the receiver, the status window follows the periodic test', async (t) => {
+  const { gladys, app, channel, clock } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234', ping_interval: 10 },
+  });
+  channel.up();
+  const refuse = (at) =>
+    app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000', at });
+  const status = () => gladys.fake.connectionStatus.message.en;
+  // Kept in the queue for 30 min: older than two periodic tests (20.5 min), not shown.
+  await refuse(new Date(T0.getTime() - 30 * 60_000).toISOString());
+  assert.doesNotMatch(status(), /sends account/);
+  // 10 min old: within two tests of 10 min, shown, and still 10 min later.
+  await refuse(new Date(T0.getTime() - 10 * 60_000).toISOString());
+  assert.match(status(), /sends account 000/);
+  clock.now = new Date(T0.getTime() + 10 * 60_000);
+  await app.updateConnectionStatus();
+  assert.match(status(), /sends account 000/);
+  clock.now = new Date(T0.getTime() + 10 * 60_000 + 30_001);
+  await app.updateConnectionStatus();
+  assert.doesNotMatch(status(), /sends account/);
+  // A date in the future counts as now; an unreadable one too.
+  await refuse(new Date(clock.now.getTime() + 3600_000).toISOString());
+  assert.equal(app.receiver.unknownAccount.at, clock.now.getTime());
+  await refuse('garbage');
+  assert.equal(app.receiver.unknownAccount.at, clock.now.getTime());
+});
+
 test('clear: the alarm and fault memory is emptied', async (t) => {
   const { gladys, app, ids } = await setup(t, { config: { accounts: '1234', language: 'en' } });
   await app.onChannelMessage(
