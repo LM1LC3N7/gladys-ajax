@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-20
+
 ### Fixed
 
 - A hub that reports while its device was not added in Gladys (typically after a change of account number: a new number is a new device) is named in the status and the logs (once, then once an hour at most) with the step to take: add it from the Discovery tab; the status is refreshed at the first message and when a device is created, updated or deleted. A device left in Gladys for an account no longer configured is reported too (status note, logs, status button) so the user deletes it.
@@ -78,7 +80,8 @@ the notes of the version's GitHub Release.
 - "Show the receiver status" and "Clear the alarm and fault memory" buttons.
 - The state learned from the events is kept across restarts.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/LM1LC3N7/gladys-ajax/compare/v0.1.2...v0.1.3
