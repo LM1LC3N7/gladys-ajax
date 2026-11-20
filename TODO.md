@@ -83,6 +83,15 @@ up to date at the end of every milestone.
 - The address shown with `{{gladys_host}}` behind Gladys Plus (the docs say
   to use the LAN IP).
 
+## Open points (review r1 of the device fix, 2026-11-20)
+
+- Device names in the status messages: `deviceMessage` translates the
+  default name into each language, while Discovery shows the name built
+  with `config.language`; a renamed orphan is named by its default name, not
+  its `device.name` from `gladys.devices` (M6).
+- The orphan warning is re-armed by any device event (a rename of another
+  device logs it again); only the key of the device concerned should be (M7).
+
 ## Decisions
 
 - **Missing and orphan devices** (2026-11-20, member JKBS64, /t/11572): a

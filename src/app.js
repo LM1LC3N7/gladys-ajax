@@ -58,6 +58,9 @@ export class AjaxApp {
     this.receiver = { error: null, info: null, lastRejection: null, unknownAccount: null };
     this.refusalsLogged = new Map();
     this.connection = null;
+    // The status failed last time: the supervision tick retries it, not every message.
+    this.statusFailed = false;
+    this.statusPending = Promise.resolve();
     this.sceneEventTimes = [];
     this.chain = Promise.resolve();
   }
@@ -294,8 +297,6 @@ export class AjaxApp {
         MESSAGES.deviceMissing.en([this.deviceName(account)]),
       );
     }
-    // The status follows at once (a first message, a missing device); unchanged, nothing is sent.
-    await this.updateConnectionStatus();
     for (const effect of effects) {
       if (effect.type === 'mode') {
         this.logger?.info(
@@ -309,9 +310,17 @@ export class AjaxApp {
     }
     if (this.now().getTime() - at.getTime() > TIMINGS.staleEvent) {
       this.logger?.info(`Hub ${account}: old message (${at.toISOString()}), no scene event`);
-      return;
+    } else {
+      await this.fireEffects(account, effects);
     }
-    await this.fireEffects(account, effects);
+    // The status after the scenes (a first message, a missing device), never delaying them.
+    this.statusSoon();
+  }
+
+  /** The status without waiting for it; while it fails, the supervision tick is the only retry. */
+  statusSoon() {
+    if (this.statusFailed) return;
+    this.statusPending = this.updateConnectionStatus().catch(() => {});
   }
 
   // --- Supervision -------------------------------------------------------------
@@ -438,11 +447,12 @@ export class AjaxApp {
         (account) => this.data.accounts[account]?.lastSeen && !this.isOnline(account),
       );
       const orphans = this.orphanDevices();
-      if (missing.length > 0) {
-        // The hub reaches Gladys, but nothing shows: the most useful thing to say.
-        status = [false, this.deviceMessage(MESSAGES.deviceMissing, missing)];
-      } else if (silent.length > 0) {
+      if (silent.length > 0) {
+        // A hub that stopped reporting is never said to report, device or not.
         status = [false, localized(MESSAGES.silent, silent.join(', '))];
+      } else if (missing.length > 0) {
+        // The hub reaches Gladys, but nothing shows: before "waiting for" another hub.
+        status = [false, this.deviceMessage(MESSAGES.deviceMissing, missing)];
       } else if (neverSeen.length > 0) {
         status = [false, localized(MESSAGES.neverSeen, neverSeen.join(', '))];
       } else if (orphans.length > 0) {
@@ -458,8 +468,10 @@ export class AjaxApp {
     this.connection = key;
     try {
       await this.gladys.setConnectionStatus(status[0], status[1]);
+      this.statusFailed = false;
     } catch (err) {
       this.connection = null;
+      this.statusFailed = true;
       this.logger?.debug(`Connection status not sent: ${err.message}`);
     }
   }

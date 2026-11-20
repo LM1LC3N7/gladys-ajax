@@ -163,7 +163,7 @@ export function eventText(parts, language) {
 }
 
 /**
- * The configured account that is `account` with other leading zeros (`12` for `0012`),
+ * The configured account that is `account` with other leading zeros (`012` for `0012`),
  * else undefined. Accounts made of zeros only never match (000 is "no object number").
  */
 export function zerosDiffer(account, configured) {

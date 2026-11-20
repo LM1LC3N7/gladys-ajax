@@ -99,6 +99,11 @@ async function setup(
     store,
     channel: channels[0],
     ids: gladys.externalIds('hub', '1234'),
+    // A panel message, with the status that follows it (sent without waiting).
+    heard: async (msg) => {
+      await app.onChannelMessage(msg);
+      await app.statusPending;
+    },
     starts: () => gladys.fake.requests.filter((r) => r.path === '/container/sia-receiver/start'),
   };
 }
@@ -638,7 +643,10 @@ test('messages for an account no longer configured are ignored', async (t) => {
 
 test('a configured hub reports while its device is not added: Discovery lists it, status and one log say so', async (t) => {
   const logger = recordingLogger();
-  const { gladys, app, channel, clock, ids } = await setup(t, { containers: RUNNING, logger });
+  const { gladys, channel, clock, ids, heard } = await setup(t, {
+    containers: RUNNING,
+    logger,
+  });
   channel.up();
   // Nothing heard yet: waiting for the hub, not for the device.
   assert.match(gladys.fake.connectionStatus.message.fr, /premier message de la centrale 1234/);
@@ -647,7 +655,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
     [ids.device],
   );
 
-  await app.onChannelMessage(message([{ code: 'CG', number: 5, group: 1 }]));
+  await heard(message([{ code: 'CG', number: 5, group: 1 }]));
   // The states went out (Gladys drops them without the device), the status says what to do.
   assert.equal(gladys.fake.lastState(ids.feature('mode')), 'partial');
   const status = gladys.fake.connectionStatus;
@@ -669,7 +677,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
   // More messages within the hour: no new line; after an hour, one more.
   const later = (minutes, events, sequence) => {
     clock.now = new Date(T0.getTime() + minutes * 60_000);
-    return app.onChannelMessage(message(events, { sequence, receivedAt: clock.now.toISOString() }));
+    return heard(message(events, { sequence, receivedAt: clock.now.toISOString() }));
   };
   await later(59, [{ code: 'OG', number: 5, group: 1 }], '0002');
   assert.equal(logger.warnings.length, 1);
@@ -701,7 +709,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
 
 test('a changed account number: the new hub is in Discovery, the old device is an orphan', async (t) => {
   const logger = recordingLogger();
-  const { gladys, app, channel } = await setup(t, {
+  const { gladys, channel, heard } = await setup(t, {
     containers: RUNNING,
     logger,
     config: { accounts: '007', language: 'en' },
@@ -710,7 +718,7 @@ test('a changed account number: the new hub is in Discovery, the old device is a
   channel.up();
   assert.deepEqual(logger.warnings, []);
   // The hub still on 007 reports: all good.
-  await app.onChannelMessage(message([{ code: 'CL', number: 1 }], { account: '007' }));
+  await heard(message([{ code: 'CL', number: 1 }], { account: '007' }));
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.equal(gladys.fake.connectionStatus.message, undefined);
 
@@ -722,7 +730,7 @@ test('a changed account number: the new hub is in Discovery, the old device is a
     'Discovery offers the new hub only',
   );
   assert.deepEqual(logger.warnings, [MESSAGES.orphanDevice.en(['Ajax alarm 007'])]);
-  await app.onChannelMessage(message([{ code: 'CG', number: 5, group: 1 }]));
+  await heard(message([{ code: 'CG', number: 5, group: 1 }]));
   // The missing device comes first: it is what keeps the dashboard empty.
   assert.equal(gladys.fake.connectionStatus.connected, false);
   assert.match(
@@ -763,14 +771,14 @@ test('a changed account number: the new hub is in Discovery, the old device is a
 });
 
 test('several hubs: missing devices and orphans are listed; a silent hub with its device is silent', async (t) => {
-  const { gladys, app, channel, clock } = await setup(t, {
+  const { gladys, app, channel, clock, heard } = await setup(t, {
     containers: RUNNING,
     config: { accounts: '1234, 5678, 9ABC', language: 'en' },
     devices: [createdDevice('9ABC'), createdDevice('AAA'), createdDevice('BBB')],
   });
   channel.up();
   for (const account of ['1234', '5678', '9ABC']) {
-    await app.onChannelMessage(message([{ code: 'RP' }], { account }));
+    await heard(message([{ code: 'RP' }], { account }));
   }
   const status = gladys.fake.connectionStatus;
   assert.equal(status.connected, false);
@@ -823,14 +831,14 @@ test('refusals: an account that differs by its leading zeros gets the hint', asy
     config: { accounts: '0012, 5678, 0000' },
   });
   channel.up();
-  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '12' });
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '012' });
   assert.match(
     logger.warnings[0],
-    /leading zeros included: 12 and 0012 are two different accounts\.$/,
+    /leading zeros included: 012 and 0012 are two different accounts\.$/,
   );
   assert.match(
     gladys.fake.connectionStatus.message.fr,
-    /zéros de tête compris : 12 et 0012 sont deux comptes différents\.$/,
+    /zéros de tête compris : 012 et 0012 sont deux comptes différents\.$/,
   );
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000012' });
   assert.match(logger.warnings[1], /000012 and 0012 are two different accounts/);
@@ -840,11 +848,102 @@ test('refusals: an account that differs by its leading zeros gets the hint', asy
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
   assert.doesNotMatch(logger.warnings[3], /leading zeros/);
   assert.match(logger.warnings[3], /object number is empty/);
-  // The helper itself: zeros only never match a longer run of zeros, case does not matter.
+  // The helper itself (accounts are upper case already): zeros only never match a run of zeros.
   assert.equal(zerosDiffer('000', ['0000', '0012']), undefined);
-  assert.equal(zerosDiffer('12', ['0012']), '0012');
+  assert.equal(zerosDiffer('012', ['0012']), '0012');
   assert.equal(zerosDiffer('0012', ['0012']), undefined);
   assert.equal(zerosDiffer('AB', ['00AB']), '00AB');
+});
+
+test('status order: a silent hub is never said to report; a missing device beats waiting for another hub', async (t) => {
+  const { gladys, app, clock, channel, heard } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234, 5678', language: 'en' },
+  });
+  channel.up();
+  await heard(message([{ code: 'RP' }]));
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /^Hub Ajax alarm 1234 reports, but its device/,
+  );
+  // 1234 stops reporting: silent, whatever its device; 5678 never heard stays behind.
+  clock.now = new Date(T0.getTime() + 3 * 60_000);
+  await app.tick();
+  assert.equal(
+    gladys.fake.connectionStatus.message.en,
+    'No message from hub 1234 within the periodic test interval.',
+  );
+  // Reporting again: the missing device, before "waiting for 5678".
+  await heard(message([{ code: 'RP' }], { sequence: '0002', receivedAt: clock.now.toISOString() }));
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /^Hub Ajax alarm 1234 reports, but its device/,
+  );
+  await gladys.fake.deviceCreated(createdDevice('1234'));
+  assert.equal(
+    gladys.fake.connectionStatus.message.en,
+    'Waiting for the first message of hub 5678.',
+  );
+});
+
+test('orphans: logged once at start, not again on config saves or reconnections', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app } = await setup(t, {
+    containers: RUNNING,
+    logger,
+    config: { accounts: '1234', language: 'en' },
+    devices: [createdDevice('AAA')],
+  });
+  assert.deepEqual(logger.warnings, [MESSAGES.orphanDevice.en(['Ajax alarm AAA'])]);
+  await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  await gladys.connect();
+  await gladys.connect();
+  assert.equal(logger.warnings.length, 1);
+  assert.equal(app.refusalsLogged.size, 1);
+});
+
+test('the status never delays the scenes, and is not retried on every message while it fails', async (t) => {
+  const { gladys, app, channel, clock, heard } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234, 5678', language: 'en' },
+  });
+  channel.up();
+  await app.updateConnectionStatus();
+  const trace = [];
+  const statusCalls = () => trace.filter((entry) => entry === 'status').length;
+  const original = gladys.setConnectionStatus.bind(gladys);
+  let failing = true;
+  gladys.setConnectionStatus = async (...args) => {
+    trace.push('status');
+    if (failing) throw new Error('host API down');
+    return original(...args);
+  };
+  const scene = gladys.publishSceneEvent.bind(gladys);
+  gladys.publishSceneEvent = async (...args) => {
+    trace.push('scene');
+    return scene(...args);
+  };
+  await heard(message([{ code: 'BA', number: 3 }]));
+  assert.deepEqual(trace, ['scene', 'scene', 'status'], 'the alarm scenes first, the status after');
+  // While it fails, more messages do not retry it: the tick does.
+  await heard(message([{ code: 'BR', number: 3 }], { sequence: '0002' }));
+  await heard(message([{ code: 'BA', number: 4 }], { sequence: '0003' }));
+  assert.equal(statusCalls(), 1);
+  await app.tick();
+  assert.equal(statusCalls(), 2);
+  // Back: the tick sends it, and the messages follow it again.
+  failing = false;
+  clock.now = new Date(T0.getTime() + 15_000);
+  await app.tick();
+  assert.equal(statusCalls(), 3);
+  assert.match(gladys.fake.connectionStatus.message.en, /^Hub Ajax alarm 1234 reports/);
+  await heard(message([{ code: 'RP' }], { account: '5678', receivedAt: clock.now.toISOString() }));
+  assert.equal(statusCalls(), 4);
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /^Hubs Ajax alarm 1234, Ajax alarm 5678 report/,
+  );
 });
 
 test('a created device gets every state again', async (t) => {

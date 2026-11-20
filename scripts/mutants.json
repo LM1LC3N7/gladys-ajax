@@ -20,8 +20,8 @@
   {
     "name": "missing device never shown in the status",
     "file": "src/app.js",
-    "from": "      if (missing.length > 0) {",
-    "to": "      if (false) {"
+    "from": "      } else if (missing.length > 0) {",
+    "to": "      } else if (false) {"
   },
   {
     "name": "orphan shown as disconnected",
@@ -70,5 +70,47 @@
     "file": "src/i18n.js",
     "from": "return configured.find((other) => other !== account && other.replace(/^0+/, '') === trimmed);",
     "to": "return configured.find((other) => other !== account);"
+  },
+  {
+    "name": "a silent hub is never shown as silent",
+    "file": "src/app.js",
+    "from": "(account) => this.data.accounts[account]?.lastSeen && !this.isOnline(account),",
+    "to": "(account) => false,"
+  },
+  {
+    "name": "waiting for another hub hides the missing device",
+    "file": "src/app.js",
+    "from": "      } else if (missing.length > 0) {",
+    "to": "      } else if (missing.length > 0 && neverSeen.length === 0) {"
+  },
+  {
+    "name": "orphan logged at every config save or reconnection",
+    "file": "src/app.js",
+    "from": "this.logRefusal(`orphan_device:${account}`,",
+    "to": "this.logRefusal(`orphan_device:${account}:${Math.random()}`,"
+  },
+  {
+    "name": "orphans not logged at start",
+    "file": "src/app.js",
+    "from": "    this.published.clear();\n    await this.publishAll();\n    this.logOrphans();\n",
+    "to": "    this.published.clear();\n    await this.publishAll();\n"
+  },
+  {
+    "name": "status retried on every message while it fails",
+    "file": "src/app.js",
+    "from": "    if (this.statusFailed) return;\n",
+    "to": ""
+  },
+  {
+    "name": "status before the scenes",
+    "file": "src/app.js",
+    "from": "      await this.fireEffects(account, effects);\n    }\n    // The status after the scenes (a first message, a missing device), never delaying them.\n    this.statusSoon();",
+    "to": "      this.statusSoon();\n      await this.fireEffects(account, effects);\n    }"
+  },
+  {
+    "name": "a status that works again stays marked failed",
+    "file": "src/app.js",
+    "from": "      this.statusFailed = false;\n    } catch (err) {",
+    "to": "    } catch (err) {"
   }
 ]

@@ -218,7 +218,7 @@ Gladys and never logged.
   Monitoring station) and the same one in the configuration, or put 000 in
   the configuration. An account missing from the configuration is always
   refused. Numbers are compared as the hub sends them, leading zeros
-  included and whatever the case: `0012`, `12` and `000` are three different
+  included and whatever the case: `0012`, `012` and `000` are three different
   accounts; a space in the field separates two numbers.
 - **"Hub … reports, but its device is not in Gladys"** (status, logs) or
   **"device not added in Gladys"** (status button): the hub does reach
@@ -228,8 +228,9 @@ Gladys and never logged.
   in its identifier, so a new number is a new device. Add it from Discovery,
   delete the old one (the status reports it as "an account that is no longer
   configured" as long as it exists) and rebuild its dashboard widgets and
-  scenes on the new device. The mode, the groups and the last event fill in
-  at the next message of the hub.
+  scenes on the new device. The mode, the groups and the last event already
+  learned are published as soon as the device is created, the rest at the
+  next message of the hub.
 - **"Decryption failed (wrong key?)"**, **"no encryption key is configured"**
   or **"Unencrypted message … refused"**: the key or the encryption switch
   differs between the hub and Gladys.

@@ -238,11 +238,12 @@ les journaux.
   de télésurveillance) et le même dans la configuration, ou mettez 000 dans
   la configuration. Un compte absent de la configuration est toujours
   refusé. Les numéros sont comparés tels que la centrale les envoie, zéros
-  de tête compris et sans tenir compte de la casse : `0012`, `12` et `000`
+  de tête compris et sans tenir compte de la casse : `0012`, `012` et `000`
   sont trois comptes différents ; une espace dans le champ sépare deux
   numéros.
 - **« La centrale … transmet, mais son appareil n'est pas dans Gladys »**
-  (statut, journaux) ou **« appareil non ajouté dans Gladys »** (bouton
+  (statut ; dans les journaux, en anglais : « Hub … reports, but its device
+  is not in Gladys ») ou **« appareil non ajouté dans Gladys »** (bouton
   d'état) : la centrale joint bien Gladys, mais Gladys ignore les états d'un
   appareil qui n'a pas été ajouté. Ouvrez l'onglet **Découverte** et ajoutez
   **Alarme Ajax 1234**. C'est le cas après un **changement de numéro de
@@ -251,7 +252,8 @@ les journaux.
   supprimez l'ancien (le statut le signale comme « compte qui n'est plus
   configuré » tant qu'il existe) et refaites ses widgets du tableau de bord et
   ses scènes sur le nouvel appareil. Le mode, les groupes et le dernier
-  événement se remplissent au message suivant de la centrale.
+  événement déjà connus sont publiés dès l'ajout de l'appareil, le reste au
+  message suivant de la centrale.
 - **« Decryption failed (wrong key?) »**, **« no encryption key is
   configured »** ou **« Unencrypted message … refused »** : la clé ou
   l'activation du chiffrement diffère entre la centrale et Gladys.
