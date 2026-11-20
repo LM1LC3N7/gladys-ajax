@@ -643,11 +643,12 @@ test('messages for an account no longer configured are ignored', async (t) => {
 
 test('a configured hub reports while its device is not added: Discovery lists it, status and one log say so', async (t) => {
   const logger = recordingLogger();
-  const { gladys, channel, clock, ids, heard } = await setup(t, {
+  const { gladys, app, channel, clock, ids, heard } = await setup(t, {
     containers: RUNNING,
     logger,
   });
   channel.up();
+  await app.statusPending;
   // Nothing heard yet: waiting for the hub, not for the device.
   assert.match(gladys.fake.connectionStatus.message.fr, /premier message de la centrale 1234/);
   assert.deepEqual(
@@ -944,6 +945,69 @@ test('the status never delays the scenes, and is not retried on every message wh
     gladys.fake.connectionStatus.message.en,
     /^Hubs Ajax alarm 1234, Ajax alarm 5678 report/,
   );
+});
+
+test('two status changes a few ms apart: sent one after the other, the last one wins', async (t) => {
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234, AB12', language: 'en' },
+    devices: [createdDevice('1234'), createdDevice('AB12')],
+  });
+  channel.up();
+  await app.updateConnectionStatus();
+  assert.match(gladys.fake.connectionStatus.message.en, /first message of hub 1234, AB12/);
+  // The first request is slow (the core answers after a lookup), the next ones fast.
+  const original = gladys.setConnectionStatus.bind(gladys);
+  let delay = 50;
+  gladys.setConnectionStatus = async (...args) => {
+    const wait = delay;
+    delay = 1;
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    return original(...args);
+  };
+  await app.onChannelMessage(message([], { id: 'NULL' }));
+  await app.onChannelMessage(message([], { id: 'NULL', account: 'AB12' }));
+  await app.statusPending;
+  // Long enough for any request still in flight (a parallel slow one) to land.
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.equal(gladys.fake.connectionStatus.message, undefined);
+  assert.deepEqual(
+    gladys.fake.connectionStatuses.slice(-2).map((status) => status.connected),
+    [false, true],
+    'one request at a time, in order',
+  );
+  // The receiver going down and up: the same queue, applied in order.
+  channel.down();
+  channel.up();
+  await app.statusPending;
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+});
+
+test('an old kept message updates the status at once, without a scene event', async (t) => {
+  const { gladys, app, channel, heard } = await setup(t, { containers: RUNNING });
+  channel.up();
+  await app.statusPending;
+  assert.match(gladys.fake.connectionStatus.message.en, /first message of hub 1234/);
+  const scenes = gladys.fake.sceneEvents.length;
+  await heard(
+    message([{ code: 'CL' }], { receivedAt: new Date(T0.getTime() - 10 * 60_000).toISOString() }),
+  );
+  assert.equal(gladys.fake.sceneEvents.length, scenes);
+  // Heard 10 min ago: silent already, said at once (not by the next tick).
+  assert.equal(
+    gladys.fake.connectionStatus.message.en,
+    'No message from hub 1234 within the periodic test interval.',
+  );
+});
+
+test('a Gladys restart: the unchanged status is sent again at the reconnection', async (t) => {
+  const { gladys } = await setup(t, { containers: RUNNING, devices: [createdDevice('1234')] });
+  const sent = gladys.fake.connectionStatuses.length;
+  assert.ok(sent > 0);
+  await gladys.connect();
+  assert.equal(gladys.fake.connectionStatuses.length, sent + 1);
+  assert.deepEqual(gladys.fake.connectionStatuses.at(-1), gladys.fake.connectionStatuses.at(-2));
 });
 
 test('a created device gets every state again', async (t) => {

@@ -60,6 +60,7 @@ export class AjaxApp {
     this.connection = null;
     // The status failed last time: the supervision tick retries it, not every message.
     this.statusFailed = false;
+    // One status request at a time, in order: two in flight could be applied in the wrong order.
     this.statusPending = Promise.resolve();
     this.sceneEventTimes = [];
     this.chain = Promise.resolve();
@@ -81,6 +82,8 @@ export class AjaxApp {
   /** Every SDK (re)connection: config, devices, receiver, channel, states. */
   async connected(rawConfig) {
     await this.load();
+    // Gladys keeps the status in memory only: after its restart, an unchanged status is sent again.
+    this.connection = null;
     this.config = normalizeConfig(rawConfig);
     this.logConfigProblems();
     await this.publishDevices();
@@ -320,7 +323,7 @@ export class AjaxApp {
   /** The status without waiting for it; while it fails, the supervision tick is the only retry. */
   statusSoon() {
     if (this.statusFailed) return;
-    this.statusPending = this.updateConnectionStatus().catch(() => {});
+    this.updateConnectionStatus().catch(() => {});
   }
 
   // --- Supervision -------------------------------------------------------------
@@ -426,7 +429,17 @@ export class AjaxApp {
     }
   }
 
-  async updateConnectionStatus() {
+  /**
+   * The status, computed when its turn comes and sent after the previous one is applied
+   * (Gladys keeps the last request applied, not the last sent): the latest state always wins.
+   */
+  updateConnectionStatus() {
+    const run = this.statusPending.then(() => this.sendConnectionStatus());
+    this.statusPending = run.catch(() => {});
+    return run;
+  }
+
+  async sendConnectionStatus() {
     const { accounts, keyError } = this.config;
     let status;
     if (accounts.length === 0) {

@@ -112,5 +112,23 @@
     "file": "src/app.js",
     "from": "      this.statusFailed = false;\n    } catch (err) {",
     "to": "    } catch (err) {"
+  },
+  {
+    "name": "status requests in parallel",
+    "file": "src/app.js",
+    "from": "    const run = this.statusPending.then(() => this.sendConnectionStatus());",
+    "to": "    const run = this.sendConnectionStatus();"
+  },
+  {
+    "name": "an old message does not refresh the status",
+    "file": "src/app.js",
+    "from": "      await this.fireEffects(account, effects);\n    }\n    // The status after the scenes (a first message, a missing device), never delaying them.\n    this.statusSoon();",
+    "to": "      await this.fireEffects(account, effects);\n      this.statusSoon();\n    }"
+  },
+  {
+    "name": "status not sent again after a Gladys restart",
+    "file": "src/app.js",
+    "from": "    this.connection = null;\n    this.config = normalizeConfig(rawConfig);",
+    "to": "    this.config = normalizeConfig(rawConfig);"
   }
 ]
