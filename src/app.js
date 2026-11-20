@@ -62,6 +62,8 @@ export class AjaxApp {
     this.statusFailed = false;
     // One status request at a time, in order: two in flight could be applied in the wrong order.
     this.statusPending = Promise.resolve();
+    // The request waiting its turn, if any: more callers share it (it computes the state when it goes).
+    this.statusQueued = null;
     this.sceneEventTimes = [];
     this.chain = Promise.resolve();
   }
@@ -93,7 +95,7 @@ export class AjaxApp {
     this.published.clear();
     await this.publishAll();
     this.logOrphans();
-    await this.updateConnectionStatus();
+    this.statusLater();
   }
 
   async configUpdated(rawConfig) {
@@ -107,7 +109,7 @@ export class AjaxApp {
     await this.ensureReceiver();
     await this.publishAll();
     this.logOrphans();
-    await this.updateConnectionStatus();
+    this.statusLater();
   }
 
   async stop() {
@@ -215,11 +217,11 @@ export class AjaxApp {
       this.logger?.info(
         `Connected to the SIA receiver${info?.queued ? ` (${info.queued} message(s) kept)` : ''}`,
       );
-      this.updateConnectionStatus().catch(() => {});
+      this.statusLater();
     });
     this.channel.on('down', () => {
       this.logger?.warn('Lost the SIA receiver, reconnecting');
-      this.updateConnectionStatus().catch(() => {});
+      this.statusLater();
     });
     this.channel.on('message', (message) =>
       this.exclusive(() => this.onChannelMessage(message)).catch((err) =>
@@ -249,7 +251,7 @@ export class AjaxApp {
         this.logRefusal(`unknown_account:${account}`, now, () =>
           MESSAGES.unknownAccount.en(account, this.config.accounts),
         );
-        await this.updateConnectionStatus();
+        this.statusLater();
       } else if (message.problem && account) {
         this.logRefusal(
           `${message.reason}:${account}`,
@@ -323,7 +325,7 @@ export class AjaxApp {
   /** The status without waiting for it; while it fails, the supervision tick is the only retry. */
   statusSoon() {
     if (this.statusFailed) return;
-    this.updateConnectionStatus().catch(() => {});
+    this.statusLater();
   }
 
   // --- Supervision -------------------------------------------------------------
@@ -363,7 +365,8 @@ export class AjaxApp {
       this.published.clear();
       await this.publishAll();
     }
-    await this.updateConnectionStatus();
+    // The tick is the retry of a status that failed; it never waits for it.
+    this.statusLater();
   }
 
   /** One warning per refusal (reason, account), then at most one per hour while it goes on. */
@@ -434,9 +437,20 @@ export class AjaxApp {
    * (Gladys keeps the last request applied, not the last sent): the latest state always wins.
    */
   updateConnectionStatus() {
-    const run = this.statusPending.then(() => this.sendConnectionStatus());
+    // At most one request in flight and one waiting: the waiting one serves every caller until it goes.
+    if (this.statusQueued) return this.statusQueued;
+    const run = this.statusPending.then(() => {
+      this.statusQueued = null;
+      return this.sendConnectionStatus();
+    });
+    this.statusQueued = run;
     this.statusPending = run.catch(() => {});
     return run;
+  }
+
+  /** The status through the queue, never awaited by the message chain (a slow Gladys must not hold it). */
+  statusLater() {
+    this.updateConnectionStatus().catch(() => {});
   }
 
   async sendConnectionStatus() {
@@ -523,7 +537,7 @@ export class AjaxApp {
     }
     await this.publishAll();
     this.logOrphans();
-    await this.updateConnectionStatus();
+    this.statusLater();
   }
 
   async publishAll() {

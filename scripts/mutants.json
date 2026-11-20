@@ -44,7 +44,7 @@
   {
     "name": "a device change does not refresh the status",
     "file": "src/app.js",
-    "from": "    this.logOrphans();\n    await this.updateConnectionStatus();\n  }\n\n  async publishAll() {",
+    "from": "    this.logOrphans();\n    this.statusLater();\n  }\n\n  async publishAll() {",
     "to": "    this.logOrphans();\n  }\n\n  async publishAll() {"
   },
   {
@@ -116,8 +116,8 @@
   {
     "name": "status requests in parallel",
     "file": "src/app.js",
-    "from": "    const run = this.statusPending.then(() => this.sendConnectionStatus());",
-    "to": "    const run = this.sendConnectionStatus();"
+    "from": "    const run = this.statusPending.then(() => {",
+    "to": "    const run = Promise.resolve().then(() => {"
   },
   {
     "name": "an old message does not refresh the status",
@@ -130,5 +130,17 @@
     "file": "src/app.js",
     "from": "    this.connection = null;\n    this.config = normalizeConfig(rawConfig);",
     "to": "    this.config = normalizeConfig(rawConfig);"
+  },
+  {
+    "name": "waiting status requests pile up",
+    "file": "src/app.js",
+    "from": "    if (this.statusQueued) return this.statusQueued;\n",
+    "to": ""
+  },
+  {
+    "name": "the tick waits for the status",
+    "file": "src/app.js",
+    "from": "    // The tick is the retry of a status that failed; it never waits for it.\n    this.statusLater();",
+    "to": "    await this.updateConnectionStatus();"
   }
 ]

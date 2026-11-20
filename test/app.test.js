@@ -91,6 +91,7 @@ async function setup(
   });
   registerHandlers(gladys, app);
   await gladys.connect();
+  await app.statusPending;
   t.after(() => app.stop());
   return {
     gladys,
@@ -219,6 +220,7 @@ test('a hub arms, an intrusion: states, scene events, connection status', async 
     mode: 'armed',
   });
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, true);
 
   // Disarm: the alarm ends, a restore event says so.
@@ -266,14 +268,17 @@ test('supervision: two missed periodic tests make the hub silent, a message brin
   channel.up();
   await app.onChannelMessage(message([], { id: 'NULL' }));
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, true);
 
   clock.now = new Date(T0.getTime() + 2 * 60_000 + 20_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.lastState(ids.feature('online')), 1, 'within two tests and the grace');
 
   clock.now = new Date(T0.getTime() + 2 * 60_000 + 31_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.lastState(ids.feature('online')), 0);
   assert.deepEqual(gladys.fake.sceneEvents.at(-1), {
     key: 'fault',
@@ -290,6 +295,7 @@ test('supervision: two missed periodic tests make the hub silent, a message brin
   assert.match(gladys.fake.connectionStatus.message.en, /No message from hub 1234/);
   // Once only.
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.sceneEvents.filter((event) => event.key === 'fault').length, 1);
 
   await app.onChannelMessage(message([], { id: 'NULL', receivedAt: clock.now.toISOString() }));
@@ -305,6 +311,7 @@ test('no supervision (0): a hub heard once stays online', async (t) => {
   await app.onChannelMessage(message([]));
   clock.now = new Date(T0.getTime() + 7 * 86_400_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.lastState(ids.feature('online')), 1);
 });
 
@@ -348,13 +355,16 @@ test('a configuration change recreates the receiver only when its environment ch
   const { gladys, app, starts } = await setup(t, { containers: RUNNING });
   assert.equal(starts().length, 1, 'first start: no fingerprint yet');
   await gladys.fake.configUpdated({ accounts: '1234', language: 'fr' });
+  await app.statusPending;
   assert.equal(starts().length, 1);
   await gladys.fake.configUpdated({ accounts: '1234 5678' });
+  await app.statusPending;
   assert.equal(starts().length, 2);
   assert.equal(JSON.parse(starts()[1].body.env.SIA_ACCOUNTS).length, 2);
   assert.equal(gladys.fake.discoveredDevices.length, 2);
   // Language: names in English from now on.
   await gladys.fake.configUpdated({ accounts: '1234 5678', language: 'en' });
+  await app.statusPending;
   assert.equal(gladys.fake.discoveredDevices[0].name, 'Ajax alarm 1234');
   assert.equal(starts().length, 2);
   assert.equal(app.config.language, 'en');
@@ -381,6 +391,7 @@ test('a receiver that cannot start shows in the status', async (t) => {
   });
   registerHandlers(gladys, app);
   await gladys.connect();
+  await app.statusPending;
   t.after(() => app.stop());
   assert.match(gladys.fake.connectionStatus.message.en, /could not start: 404/);
 });
@@ -394,6 +405,7 @@ test('refusals: a panel with an unknown account shows in the status button', asy
     account: '9999',
     problem: 'Unknown account 9999: add it to the configuration',
   });
+  await app.statusPending;
   const ack = await gladys.fake.action('status', {});
   assert.equal(ack.success, true);
   const text = ack.data.message;
@@ -419,6 +431,7 @@ test('refusals: account 000 (empty object number) names the account and the step
     account: '000',
     problem: 'Unknown account 000: add it to the configuration',
   });
+  await app.statusPending;
   const [warning] = logger.warnings;
   assert.match(
     warning,
@@ -439,9 +452,11 @@ test('refusals: account 000 (empty object number) names the account and the step
   assert.match(status.message.en, /set "Object number" to 1234/);
   // The user adds 000: the status no longer asks for it.
   await gladys.fake.configUpdated({ accounts: '1234, 000' });
+  await app.statusPending;
   await app.updateConnectionStatus();
   assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /sends account/);
   await gladys.fake.configUpdated({ accounts: '1234' });
+  await app.statusPending;
   await app.updateConnectionStatus();
   assert.match(gladys.fake.connectionStatus.message.en, /sends account 000/);
 
@@ -473,6 +488,7 @@ test('refusals: another account, several configured, none configured', async (t)
   });
   channel.up();
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '9999' });
+  await app.statusPending;
   assert.match(
     logger.warnings[0],
     /account 9999, which is not in the configuration \(configured: 1234, 5678\)/,
@@ -494,6 +510,7 @@ test('refusals: once the account is configured, its messages count and the statu
   });
   channel.up();
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
+  await app.statusPending;
   // A refusal reported just before the new configuration: not shown for a configured account.
   assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /sends account/);
   await app.onChannelMessage(message([{ code: 'CL', number: 5, group: 1 }], { account: '000' }));
@@ -514,12 +531,15 @@ test('refusals: other reasons are logged with their account, junk without one is
     account: '1234',
     problem: 'Account 1234: Decryption failed (wrong key?)',
   });
+  await app.statusPending;
   await app.onChannelMessage({ type: 'rejected', reason: 'format', problem: 'Not a DC-09 frame' });
+  await app.statusPending;
   await app.onChannelMessage({
     type: 'rejected',
     reason: 'unknown_account',
     problem: 'Message without an account number',
   });
+  await app.statusPending;
   assert.deepEqual(logger.warnings, [
     'A message of a hub was refused: Account 1234: Decryption failed (wrong key?)',
   ]);
@@ -529,8 +549,15 @@ test('refusals: one warning per refused account, then at most one per hour', asy
   const logger = recordingLogger();
   const { app, channel, clock } = await setup(t, { containers: RUNNING, logger });
   channel.up();
-  const refuse = (account, reason = 'unknown_account') =>
-    app.onChannelMessage({ type: 'rejected', reason, account, problem: `${reason} ${account}` });
+  const refuse = async (account, reason = 'unknown_account') => {
+    await app.onChannelMessage({
+      type: 'rejected',
+      reason,
+      account,
+      problem: `${reason} ${account}`,
+    });
+    await app.statusPending;
+  };
   const at = (minutes) => (clock.now = new Date(T0.getTime() + minutes * 60_000));
   await refuse('000');
   await refuse('9999');
@@ -563,8 +590,10 @@ test('refusals: dated by the receiver, the status window follows the periodic te
     config: { accounts: '1234', ping_interval: 10 },
   });
   channel.up();
-  const refuse = (at) =>
-    app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000', at });
+  const refuse = async (at) => {
+    await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000', at });
+    await app.statusPending;
+  };
   const status = () => gladys.fake.connectionStatus.message.en;
   // Kept in the queue for 30 min: older than two periodic tests (20.5 min), not shown.
   await refuse(new Date(T0.getTime() - 30 * 60_000).toISOString());
@@ -688,6 +717,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
   // The user adds it from Discovery: states again, status connected, nothing about the device.
   const count = gladys.fake.states.length;
   await gladys.fake.deviceCreated(gladys.fake.discoveredDevices[0]);
+  await app.statusPending;
   assert.equal(
     gladys.fake.states
       .slice(count)
@@ -702,6 +732,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
 
   // Deleted again: the notice comes back at once.
   await gladys.fake.deviceDeleted(gladys.fake.discoveredDevices[0]);
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, false);
   assert.match(gladys.fake.connectionStatus.message.en, /not in Gladys/);
   await later(62, [{ code: 'CG', number: 5, group: 1 }], '0005');
@@ -710,7 +741,7 @@ test('a configured hub reports while its device is not added: Discovery lists it
 
 test('a changed account number: the new hub is in Discovery, the old device is an orphan', async (t) => {
   const logger = recordingLogger();
-  const { gladys, channel, heard } = await setup(t, {
+  const { gladys, app, channel, heard } = await setup(t, {
     containers: RUNNING,
     logger,
     config: { accounts: '007', language: 'en' },
@@ -725,6 +756,7 @@ test('a changed account number: the new hub is in Discovery, the old device is a
 
   // The user sets 1234 in the Ajax app and in Gladys.
   await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  await app.statusPending;
   assert.deepEqual(
     gladys.fake.discoveredDevices.map((device) => device.name),
     ['Ajax alarm 1234'],
@@ -753,6 +785,7 @@ test('a changed account number: the new hub is in Discovery, the old device is a
 
   // Added from Discovery: connected, with the note about the leftover device.
   await gladys.fake.deviceCreated(gladys.fake.discoveredDevices[0]);
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.match(
     gladys.fake.connectionStatus.message.en,
@@ -761,6 +794,7 @@ test('a changed account number: the new hub is in Discovery, the old device is a
   assert.match(gladys.fake.connectionStatus.message.fr, /Supprimez-le \(ou remettez le compte/);
   // Deleted: clean.
   await gladys.fake.deviceDeleted(createdDevice('007'));
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.equal(gladys.fake.connectionStatus.message, undefined);
   assert.doesNotMatch(
@@ -802,11 +836,14 @@ test('several hubs: missing devices and orphans are listed; a silent hub with it
   );
   // Their devices created: 9ABC goes silent, which wins over the orphans.
   await gladys.fake.deviceCreated(createdDevice('1234'));
+  await app.statusPending;
   await gladys.fake.deviceCreated(createdDevice('5678'));
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.match(gladys.fake.connectionStatus.message.en, /^Devices Ajax alarm AAA, Ajax alarm BBB/);
   clock.now = new Date(T0.getTime() + 3 * 60_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatus.connected, false);
   assert.match(gladys.fake.connectionStatus.message.en, /No message from hub 1234, 5678, 9ABC/);
 });
@@ -833,6 +870,7 @@ test('refusals: an account that differs by its leading zeros gets the hint', asy
   });
   channel.up();
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '012' });
+  await app.statusPending;
   assert.match(
     logger.warnings[0],
     /leading zeros included: 012 and 0012 are two different accounts\.$/,
@@ -842,11 +880,14 @@ test('refusals: an account that differs by its leading zeros gets the hint', asy
     /zéros de tête compris : 012 et 0012 sont deux comptes différents\.$/,
   );
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000012' });
+  await app.statusPending;
   assert.match(logger.warnings[1], /000012 and 0012 are two different accounts/);
   // No hint for an unrelated number, nor for zeros only (its own sentence).
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '9999' });
+  await app.statusPending;
   assert.doesNotMatch(logger.warnings[2], /leading zeros/);
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
+  await app.statusPending;
   assert.doesNotMatch(logger.warnings[3], /leading zeros/);
   assert.match(logger.warnings[3], /object number is empty/);
   // The helper itself (accounts are upper case already): zeros only never match a run of zeros.
@@ -870,6 +911,7 @@ test('status order: a silent hub is never said to report; a missing device beats
   // 1234 stops reporting: silent, whatever its device; 5678 never heard stays behind.
   clock.now = new Date(T0.getTime() + 3 * 60_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(
     gladys.fake.connectionStatus.message.en,
     'No message from hub 1234 within the periodic test interval.',
@@ -881,6 +923,7 @@ test('status order: a silent hub is never said to report; a missing device beats
     /^Hub Ajax alarm 1234 reports, but its device/,
   );
   await gladys.fake.deviceCreated(createdDevice('1234'));
+  await app.statusPending;
   assert.equal(
     gladys.fake.connectionStatus.message.en,
     'Waiting for the first message of hub 5678.',
@@ -897,9 +940,13 @@ test('orphans: logged once at start, not again on config saves or reconnections'
   });
   assert.deepEqual(logger.warnings, [MESSAGES.orphanDevice.en(['Ajax alarm AAA'])]);
   await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  await app.statusPending;
   await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  await app.statusPending;
   await gladys.connect();
+  await app.statusPending;
   await gladys.connect();
+  await app.statusPending;
   assert.equal(logger.warnings.length, 1);
   assert.equal(app.refusalsLogged.size, 1);
 });
@@ -932,11 +979,13 @@ test('the status never delays the scenes, and is not retried on every message wh
   await heard(message([{ code: 'BA', number: 4 }], { sequence: '0003' }));
   assert.equal(statusCalls(), 1);
   await app.tick();
+  await app.statusPending;
   assert.equal(statusCalls(), 2);
   // Back: the tick sends it, and the messages follow it again.
   failing = false;
   clock.now = new Date(T0.getTime() + 15_000);
   await app.tick();
+  await app.statusPending;
   assert.equal(statusCalls(), 3);
   assert.match(gladys.fake.connectionStatus.message.en, /^Hub Ajax alarm 1234 reports/);
   await heard(message([{ code: 'RP' }], { account: '5678', receivedAt: clock.now.toISOString() }));
@@ -1002,18 +1051,86 @@ test('an old kept message updates the status at once, without a scene event', as
 });
 
 test('a Gladys restart: the unchanged status is sent again at the reconnection', async (t) => {
-  const { gladys } = await setup(t, { containers: RUNNING, devices: [createdDevice('1234')] });
+  const { gladys, app } = await setup(t, { containers: RUNNING, devices: [createdDevice('1234')] });
   const sent = gladys.fake.connectionStatuses.length;
   assert.ok(sent > 0);
   await gladys.connect();
+  await app.statusPending;
   assert.equal(gladys.fake.connectionStatuses.length, sent + 1);
   assert.deepEqual(gladys.fake.connectionStatuses.at(-1), gladys.fake.connectionStatuses.at(-2));
 });
 
+const bounded = (promise, ms, what) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${what} hung`)), ms)),
+  ]);
+
+test('a status that never answers: a burst, then the tick returns at once and an alarm fires its scenes', async (t) => {
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234', language: 'en' },
+  });
+  channel.up();
+  await app.statusPending;
+  let calls = 0;
+  gladys.setConnectionStatus = () => {
+    calls += 1;
+    return new Promise(() => {});
+  };
+  // The first message changes the status: that request never answers.
+  await app.onChannelMessage(message([], { id: 'NULL' }));
+  for (let n = 2; n <= 60; n += 1) {
+    await app.onChannelMessage(message([], { id: 'NULL', sequence: String(n).padStart(4, '0') }));
+  }
+  await bounded(app.tick(), 500, 'the tick');
+  await bounded(gladys.fake.configUpdated({ accounts: '1234', language: 'en' }), 500, 'the config');
+  const scenes = gladys.fake.sceneEvents.length;
+  await bounded(
+    app.onChannelMessage(message([{ code: 'BA', number: 3 }], { sequence: '0099' })),
+    500,
+    'the alarm',
+  );
+  assert.deepEqual(
+    gladys.fake.sceneEvents.slice(scenes).map((e) => e.key),
+    ['alarm', 'sia_event'],
+    'the scenes fire while the status hangs',
+  );
+  assert.equal(calls, 1, 'one request in flight, the waiting one shares the rest');
+});
+
+test('a status that fails slowly: the requests waiting their turn merge into one', async (t) => {
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234', language: 'en' },
+  });
+  channel.up();
+  await app.statusPending;
+  let calls = 0;
+  gladys.setConnectionStatus = () =>
+    new Promise((_, reject) => {
+      calls += 1;
+      setTimeout(() => reject(new Error('slow failure')), 20);
+    });
+  // Six messages while the first request is in flight: one request in flight, one waiting.
+  for (let n = 1; n <= 6; n += 1) {
+    await app.onChannelMessage(message([], { id: 'NULL', sequence: String(n).padStart(4, '0') }));
+  }
+  await app.statusPending;
+  await app.statusPending;
+  assert.equal(calls, 2, 'the first, then the one that waited (recomputed), nothing else');
+  assert.equal(app.statusFailed, true);
+  // The tick is the retry.
+  await app.tick();
+  await app.statusPending;
+  assert.equal(calls, 3);
+});
+
 test('a created device gets every state again', async (t) => {
-  const { gladys, ids } = await setup(t);
+  const { gladys, app, ids } = await setup(t);
   const count = gladys.fake.states.length;
   await gladys.fake.deviceCreated(gladys.fake.discoveredDevices[0]);
+  await app.statusPending;
   const sent = gladys.fake.states.slice(count).map((state) => state.device_feature_external_id);
   assert.ok(sent.includes(ids.feature('mode')));
   assert.ok(sent.includes(ids.feature('online')));
