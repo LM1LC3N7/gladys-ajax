@@ -233,3 +233,8 @@ up to date at the end of every milestone.
   need the Ajax cloud (homebridge-ajax-sia's unofficial gRPC client): out of
   scope, said in the docs.
 - [ ] r2 mineur : test de deux motifs de refus sur le même compte (un avertissement chacun, mutant N6, app.js:246).
+
+## Minors from review ajax-device-r4 (2026-11-20)
+
+- No test proves that `connected()` and `deviceChanged()` do not wait for the status (2 reviewer mutants survive); at worst 30 s on rare events.
+- A status request can leave after `stop()`; no effect in production, but against the rule of the fiche.
