@@ -85,6 +85,12 @@ up to date at the end of every milestone.
 
 ## Decisions
 
+- **Missing and orphan devices** (2026-11-20, member JKBS64, /t/11572): a
+  hub that reports while its device is not created gets a status and a
+  bounded log ("add it from the Discovery tab"); a device left for an
+  account no longer configured is reported, never deleted by the
+  integration. Account numbers stay compared as sent (leading zeros kept);
+  sources in CLAUDE.md. `scripts/mutants.mjs` guards these checks.
 - **SDK `^0.16.0`** (2026-11-03, migration wave 6): it adds the ai, tts and
   music types; no effect here (`poll_frequency` unused, the devices carry
   `should_poll: false`). Every feature already had a numeric `min` and `max`

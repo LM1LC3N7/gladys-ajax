@@ -28,6 +28,7 @@ npm run format                            # Prettier, fix in place
 npm run audit                             # npm audit --omit=dev
 npx github:GladysAssistant/integration-store .   # store admission checks
 e2e/run.sh                                # Docker: image, receiver, SIA client
+memcap node scripts/mutants.mjs           # mutants of the guards (scripts/mutants.json), one at a time
 ```
 
 Run `format:check`, `lint`, `test` and `audit` before every commit.
@@ -99,3 +100,22 @@ e2e/                  Docker check of the real image
   sync.
 - Every user-visible change adds a line under `## [Unreleased]` in
   `CHANGELOG.md`; versions belong to the Release workflow.
+- **Accounts are compared as sent** (upper case, 3 to 16 hex digits, leading
+  zeros kept): never trim, pad or parse them as numbers. Sources (2026-11-20):
+  Ajax Cloud Signaling manual (`#acct` = "#" + 3 to 16 hex characters in
+  ASCII; "000" replaces the account in null messages when none is set; Lpref
+  constant `L0`; Rrcvr not used; a toggle can use the hub ID as account);
+  Ajax "How to directly connect the hub to the CMS via SIA DC-09" (Object
+  number field, OS Malevich 2.7+, key up to 32 HEX or 16 ASCII characters,
+  AES-128, periodic test 1 min to 24 h, Connect on demand off by default);
+  Home Assistant `sia` docs (account 3-16 ASCII hex, key 16/24/32 ASCII);
+  Loxone SIA DC-09 KB and homebridge-ajax-sia README (same 3-16 hex range).
+  No source documents a hub model or firmware difference in the account, nor
+  a case of truncation or padding by the hub.
+- **The core drops the states of a device the user has not created**
+  (`externalIntegration.saveStates`: unknown `device_feature_external_id`
+  silently ignored). A hub whose device is not in Gladys is reported through
+  `missingDevices()` (status, one log an hour); `gladys.devices` (kept by the
+  SDK, refreshed at every reconnection and device event) is the only source
+  of "created". A changed account number is a new device: the old one is an
+  orphan (`orphanDevices()`), reported but never deleted by the integration.

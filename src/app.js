@@ -14,8 +14,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { ChannelClient } from './channel.js';
 import { normalizeConfig, receiverEnv } from './config.js';
 import { LIMITS, RECEIVER, SCENE_TRIGGERS, TIMINGS } from './constants.js';
-import { accountStates, buildDevice, deviceIds } from './devices.js';
-import { MESSAGES, eventText, word } from './i18n.js';
+import { accountStates, buildDevice, deviceIds, parseExternalId } from './devices.js';
+import { DEVICE_NAME, MESSAGES, eventText, word } from './i18n.js';
 import { applyEvent, clearMemory, describe, modeOf, restoreState } from './model.js';
 import { StateStore } from './store.js';
 
@@ -86,6 +86,7 @@ export class AjaxApp {
     this.startTimer();
     this.published.clear();
     await this.publishAll();
+    this.logOrphans();
     await this.updateConnectionStatus();
   }
 
@@ -99,6 +100,7 @@ export class AjaxApp {
     await this.publishDevices();
     await this.ensureReceiver();
     await this.publishAll();
+    this.logOrphans();
     await this.updateConnectionStatus();
   }
 
@@ -286,6 +288,14 @@ export class AjaxApp {
 
     const hasEvents = !message.duplicate && (message.events ?? []).length > 0;
     await this.publishAccount(account, { forceLastEvent: hasEvents });
+    if (!this.createdAccounts().has(account)) {
+      // Gladys drops the states of a device the user has not created: say so, once an hour at most.
+      this.logRefusal(`device_missing:${account}`, this.now().getTime(), () =>
+        MESSAGES.deviceMissing.en([this.deviceName(account)]),
+      );
+    }
+    // The status follows at once (a first message, a missing device); unchanged, nothing is sent.
+    await this.updateConnectionStatus();
     for (const effect of effects) {
       if (effect.type === 'mode') {
         this.logger?.info(
@@ -369,6 +379,44 @@ export class AjaxApp {
     return age >= 0 && age <= window;
   }
 
+  // --- The devices the user created ----------------------------------------------
+
+  deviceName(account) {
+    return DEVICE_NAME[this.config.language]?.(account) ?? DEVICE_NAME.en(account);
+  }
+
+  /** The accounts whose device exists in Gladys (`gladys.devices`: resynchronized by the SDK). */
+  createdAccounts() {
+    const accounts = new Set();
+    for (const device of this.gladys.devices ?? []) {
+      const parsed = parseExternalId(device?.external_id);
+      if (parsed && parsed.key === undefined) accounts.add(parsed.account);
+    }
+    return accounts;
+  }
+
+  /** Configured hubs heard at least once whose device the user has not added. */
+  missingDevices() {
+    const created = this.createdAccounts();
+    return this.config.accounts.filter(
+      (account) => this.data.accounts[account]?.lastSeen && !created.has(account),
+    );
+  }
+
+  /** Devices in Gladys of an account no longer configured: they get no state any more. */
+  orphanDevices() {
+    return [...this.createdAccounts()].filter((account) => !this.config.accounts.includes(account));
+  }
+
+  /** The orphans, logged once an hour at most (a changed account number leaves the old device behind). */
+  logOrphans() {
+    for (const account of this.orphanDevices()) {
+      this.logRefusal(`orphan_device:${account}`, this.now().getTime(), () =>
+        MESSAGES.orphanDevice.en([this.deviceName(account)]),
+      );
+    }
+  }
+
   async updateConnectionStatus() {
     const { accounts, keyError } = this.config;
     let status;
@@ -384,20 +432,29 @@ export class AjaxApp {
       const { account } = this.receiver.unknownAccount;
       status = [false, localized(MESSAGES.unknownAccount, account, accounts)];
     } else {
+      const missing = this.missingDevices();
       const neverSeen = accounts.filter((account) => !this.data.accounts[account]?.lastSeen);
       const silent = accounts.filter(
         (account) => this.data.accounts[account]?.lastSeen && !this.isOnline(account),
       );
-      if (silent.length > 0) {
+      const orphans = this.orphanDevices();
+      if (missing.length > 0) {
+        // The hub reaches Gladys, but nothing shows: the most useful thing to say.
+        status = [false, this.deviceMessage(MESSAGES.deviceMissing, missing)];
+      } else if (silent.length > 0) {
         status = [false, localized(MESSAGES.silent, silent.join(', '))];
       } else if (neverSeen.length > 0) {
         status = [false, localized(MESSAGES.neverSeen, neverSeen.join(', '))];
+      } else if (orphans.length > 0) {
+        // Everything configured works: connected, with a note about the leftover device.
+        status = [true, this.deviceMessage(MESSAGES.orphanDevice, orphans)];
       } else {
         status = [true, undefined];
       }
     }
     const key = JSON.stringify(status);
     if (key === this.connection) return;
+    this.logger?.debug(`Connection status: ${status[1]?.en ?? (status[0] ? 'connected' : '')}`);
     this.connection = key;
     try {
       await this.gladys.setConnectionStatus(status[0], status[1]);
@@ -420,10 +477,28 @@ export class AjaxApp {
     await this.publishDevices();
   }
 
-  /** A device was created or changed: Gladys dropped the states of features it did not have. */
+  /** The message of a device list, each name in the user's language. */
+  deviceMessage(entry, accounts) {
+    return Object.fromEntries(
+      Object.entries(entry).map(([lang, text]) => [
+        lang,
+        text(accounts.map((account) => DEVICE_NAME[lang]?.(account) ?? DEVICE_NAME.en(account))),
+      ]),
+    );
+  }
+
+  /** A device was created, changed or deleted: Gladys dropped the states of features it did not have. */
   async deviceChanged() {
     this.published.clear();
+    // A device added or removed is a new situation: its notice may be logged again.
+    for (const key of [...this.refusalsLogged.keys()]) {
+      if (key.startsWith('device_missing:') || key.startsWith('orphan_device:')) {
+        this.refusalsLogged.delete(key);
+      }
+    }
     await this.publishAll();
+    this.logOrphans();
+    await this.updateConnectionStatus();
   }
 
   async publishAll() {
@@ -575,6 +650,7 @@ export class AjaxApp {
       if (this.config.accounts.length === 0) {
         lines.push(word(MESSAGES.noAccount, language));
       }
+      const created = this.createdAccounts();
       for (const account of this.config.accounts) {
         const state = this.stateOf(account);
         const seen = state.lastSeen
@@ -587,8 +663,18 @@ export class AjaxApp {
             this.isOnline(account) ? (fr ? 'joignable' : 'reporting') : fr ? 'muette' : 'silent'
           }, ${fr ? 'dernier message' : 'last message'} ${seen}${
             state.lastEvent ? `, ${eventText(state.lastEvent, language)}` : ''
+          }${
+            created.has(account)
+              ? ''
+              : fr
+                ? ', appareil non ajouté dans Gladys (onglet Découverte)'
+                : ', device not added in Gladys (Discovery tab)'
           }.`,
         );
+      }
+      const orphans = this.orphanDevices();
+      if (orphans.length > 0) {
+        lines.push(this.deviceMessage(MESSAGES.orphanDevice, orphans)[language]);
       }
       const rejection = this.receiver.lastRejection;
       if (rejection) {

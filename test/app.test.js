@@ -9,8 +9,9 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { AjaxApp } from '../src/app.js';
+import { buildDevice } from '../src/devices.js';
 import { registerHandlers } from '../src/handlers.js';
-import { MESSAGES } from '../src/i18n.js';
+import { MESSAGES, zerosDiffer } from '../src/i18n.js';
 
 const MESSAGES_unknown = (language, account, configured) =>
   MESSAGES.unknownAccount[language](account, configured);
@@ -70,9 +71,10 @@ async function setup(
     containers = [],
     store = new MemoryStore(),
     logger = undefined,
+    devices = [],
   } = {},
 ) {
-  const gladys = createFakeGladys({ config, containers });
+  const gladys = createFakeGladys({ config, containers, devices });
   const clock = { now: T0 };
   const channels = [];
   const app = new AjaxApp({
@@ -114,6 +116,9 @@ const message = (events, extra = {}) => ({
   ...extra,
 });
 
+// The device of an account as the user created it (the fake serves it from GET /device).
+const createdDevice = (account) => buildDevice(createFakeGladys(), account, 'fr');
+
 test('start: the receiver gets its environment, one device per account', async (t) => {
   const { gladys, starts, ids, channel } = await setup(t, {
     config: { accounts: '1234, ab12', encryption_key: '0123456789abcdef', time_skew: 30 },
@@ -152,7 +157,7 @@ test('start: the receiver gets its environment, one device per account', async (
 });
 
 test('a hub arms, an intrusion: states, scene events, connection status', async (t) => {
-  const { gladys, app, channel, ids } = await setup(t);
+  const { gladys, app, channel, ids } = await setup(t, { devices: [createdDevice('1234')] });
   channel.up({ queued: 0 });
   await app.updateConnectionStatus();
   assert.match(gladys.fake.connectionStatus.message.fr, /premier message de la centrale 1234/);
@@ -251,6 +256,7 @@ test('a repeat changes nothing; an old kept message updates states without scene
 test('supervision: two missed periodic tests make the hub silent, a message brings it back', async (t) => {
   const { gladys, app, clock, channel, ids } = await setup(t, {
     config: { accounts: '1234', ping_interval: 1 },
+    devices: [createdDevice('1234')],
   });
   channel.up();
   await app.onChannelMessage(message([], { id: 'NULL' }));
@@ -479,6 +485,7 @@ test('refusals: once the account is configured, its messages count and the statu
     containers: RUNNING,
     logger,
     config: { accounts: '000' },
+    devices: [createdDevice('000')],
   });
   channel.up();
   await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
@@ -627,6 +634,217 @@ test('messages for an account no longer configured are ignored', async (t) => {
   const count = gladys.fake.states.length;
   await app.onChannelMessage(message([{ code: 'CL' }], { account: '9999' }));
   assert.equal(gladys.fake.states.length, count);
+});
+
+test('a configured hub reports while its device is not added: Discovery lists it, status and one log say so', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel, clock, ids } = await setup(t, { containers: RUNNING, logger });
+  channel.up();
+  // Nothing heard yet: waiting for the hub, not for the device.
+  assert.match(gladys.fake.connectionStatus.message.fr, /premier message de la centrale 1234/);
+  assert.deepEqual(
+    gladys.fake.discoveredDevices.map((device) => device.external_id),
+    [ids.device],
+  );
+
+  await app.onChannelMessage(message([{ code: 'CG', number: 5, group: 1 }]));
+  // The states went out (Gladys drops them without the device), the status says what to do.
+  assert.equal(gladys.fake.lastState(ids.feature('mode')), 'partial');
+  const status = gladys.fake.connectionStatus;
+  assert.equal(status.connected, false);
+  assert.match(status.message.fr, /^La centrale Alarme Ajax 1234 transmet, mais son appareil/);
+  assert.match(status.message.fr, /ajoutez-le depuis l'onglet Découverte/);
+  assert.match(status.message.fr, /supprimez l'ancien et refaites ses widgets/);
+  assert.match(status.message.en, /^Hub Ajax alarm 1234 reports, but its device is not in Gladys/);
+  assert.match(status.message.en, /add it from the Discovery tab/);
+  assert.deepEqual(logger.warnings, [MESSAGES.deviceMissing.en(['Alarme Ajax 1234'])]);
+  // The status button says it too.
+  const ack = await gladys.fake.action('status', {});
+  assert.match(
+    ack.data.message.fr,
+    /Centrale 1234 : partial, joignable, .*appareil non ajouté dans Gladys \(onglet Découverte\)\./,
+  );
+  assert.match(ack.data.message.en, /device not added in Gladys \(Discovery tab\)\./);
+
+  // More messages within the hour: no new line; after an hour, one more.
+  const later = (minutes, events, sequence) => {
+    clock.now = new Date(T0.getTime() + minutes * 60_000);
+    return app.onChannelMessage(message(events, { sequence, receivedAt: clock.now.toISOString() }));
+  };
+  await later(59, [{ code: 'OG', number: 5, group: 1 }], '0002');
+  assert.equal(logger.warnings.length, 1);
+  await later(60, [{ code: 'CG', number: 5, group: 1 }], '0003');
+  assert.equal(logger.warnings.length, 2);
+
+  // The user adds it from Discovery: states again, status connected, nothing about the device.
+  const count = gladys.fake.states.length;
+  await gladys.fake.deviceCreated(gladys.fake.discoveredDevices[0]);
+  assert.equal(
+    gladys.fake.states
+      .slice(count)
+      .find((s) => s.device_feature_external_id === ids.feature('mode')).text,
+    'partial',
+  );
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.equal(gladys.fake.connectionStatus.message, undefined);
+  assert.doesNotMatch((await gladys.fake.action('status', {})).data.message.fr, /non ajouté/);
+  await later(61, [{ code: 'OG', number: 5, group: 1 }], '0004');
+  assert.equal(logger.warnings.length, 2);
+
+  // Deleted again: the notice comes back at once.
+  await gladys.fake.deviceDeleted(gladys.fake.discoveredDevices[0]);
+  assert.equal(gladys.fake.connectionStatus.connected, false);
+  assert.match(gladys.fake.connectionStatus.message.en, /not in Gladys/);
+  await later(62, [{ code: 'CG', number: 5, group: 1 }], '0005');
+  assert.equal(logger.warnings.length, 3);
+});
+
+test('a changed account number: the new hub is in Discovery, the old device is an orphan', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    logger,
+    config: { accounts: '007', language: 'en' },
+    devices: [createdDevice('007')],
+  });
+  channel.up();
+  assert.deepEqual(logger.warnings, []);
+  // The hub still on 007 reports: all good.
+  await app.onChannelMessage(message([{ code: 'CL', number: 1 }], { account: '007' }));
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.equal(gladys.fake.connectionStatus.message, undefined);
+
+  // The user sets 1234 in the Ajax app and in Gladys.
+  await gladys.fake.configUpdated({ accounts: '1234', language: 'en' });
+  assert.deepEqual(
+    gladys.fake.discoveredDevices.map((device) => device.name),
+    ['Ajax alarm 1234'],
+    'Discovery offers the new hub only',
+  );
+  assert.deepEqual(logger.warnings, [MESSAGES.orphanDevice.en(['Ajax alarm 007'])]);
+  await app.onChannelMessage(message([{ code: 'CG', number: 5, group: 1 }]));
+  // The missing device comes first: it is what keeps the dashboard empty.
+  assert.equal(gladys.fake.connectionStatus.connected, false);
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /^Hub Ajax alarm 1234 reports, but its device is not in Gladys/,
+  );
+  assert.match(gladys.fake.connectionStatus.message.fr, /^La centrale Alarme Ajax 1234 transmet/);
+  assert.equal(logger.warnings.length, 2);
+  const button = (await gladys.fake.action('status', {})).data.message;
+  assert.match(button.en, /Hub 1234: partial, reporting, .*device not added in Gladys/);
+  assert.match(
+    button.en,
+    /Device Ajax alarm 007 in Gladys belongs to an account that is no longer configured/,
+  );
+  assert.match(
+    button.fr,
+    /L'appareil Alarme Ajax 007 de Gladys correspond à un compte qui n'est plus configuré/,
+  );
+
+  // Added from Discovery: connected, with the note about the leftover device.
+  await gladys.fake.deviceCreated(gladys.fake.discoveredDevices[0]);
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.match(
+    gladys.fake.connectionStatus.message.en,
+    /^Device Ajax alarm 007 in Gladys belongs to an account that is no longer configured: it gets no state any more\. Delete it \(or add the account back\)\./,
+  );
+  assert.match(gladys.fake.connectionStatus.message.fr, /Supprimez-le \(ou remettez le compte/);
+  // Deleted: clean.
+  await gladys.fake.deviceDeleted(createdDevice('007'));
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.equal(gladys.fake.connectionStatus.message, undefined);
+  assert.doesNotMatch(
+    (await gladys.fake.action('status', {})).data.message.en,
+    /no longer configured/,
+  );
+  // The orphan notice: once at the change, once more after its creation/deletion cycle.
+  assert.equal(logger.warnings.filter((w) => /no longer configured/.test(w)).length, 2);
+});
+
+test('several hubs: missing devices and orphans are listed; a silent hub with its device is silent', async (t) => {
+  const { gladys, app, channel, clock } = await setup(t, {
+    containers: RUNNING,
+    config: { accounts: '1234, 5678, 9ABC', language: 'en' },
+    devices: [createdDevice('9ABC'), createdDevice('AAA'), createdDevice('BBB')],
+  });
+  channel.up();
+  for (const account of ['1234', '5678', '9ABC']) {
+    await app.onChannelMessage(message([{ code: 'RP' }], { account }));
+  }
+  const status = gladys.fake.connectionStatus;
+  assert.equal(status.connected, false);
+  assert.match(
+    status.message.en,
+    /^Hubs Ajax alarm 1234, Ajax alarm 5678 report, but their devices are not in Gladys: add them from the Discovery tab/,
+  );
+  assert.match(
+    status.message.fr,
+    /^Les centrales Alarme Ajax 1234, Alarme Ajax 5678 transmettent, mais leurs appareils/,
+  );
+  const button = (await gladys.fake.action('status', {})).data.message.en;
+  assert.match(
+    button,
+    /Devices Ajax alarm AAA, Ajax alarm BBB in Gladys belong to an account that is no longer configured: they get no state any more\. Delete them/,
+  );
+  assert.match(
+    (await gladys.fake.action('status', {})).data.message.fr,
+    /Les appareils Alarme Ajax AAA, Alarme Ajax BBB de Gladys correspondent à des comptes qui ne sont plus configurés : ils ne reçoivent plus d'état\. Supprimez-les/,
+  );
+  // Their devices created: 9ABC goes silent, which wins over the orphans.
+  await gladys.fake.deviceCreated(createdDevice('1234'));
+  await gladys.fake.deviceCreated(createdDevice('5678'));
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.match(gladys.fake.connectionStatus.message.en, /^Devices Ajax alarm AAA, Ajax alarm BBB/);
+  clock.now = new Date(T0.getTime() + 3 * 60_000);
+  await app.tick();
+  assert.equal(gladys.fake.connectionStatus.connected, false);
+  assert.match(gladys.fake.connectionStatus.message.en, /No message from hub 1234, 5678, 9ABC/);
+});
+
+test('a device whose id is not a hub, or a feature id, is not an account', async (t) => {
+  const { app } = await setup(t, {
+    devices: [
+      { external_id: 'ext:test-integration:other:1234', features: [] },
+      { external_id: 'ext:test-integration:hub:1234:mode', features: [] },
+      { external_id: 'ext:test-integration:hub:zz', features: [] },
+      { features: [] },
+    ],
+  });
+  assert.deepEqual([...app.createdAccounts()], []);
+  assert.deepEqual(app.orphanDevices(), []);
+});
+
+test('refusals: an account that differs by its leading zeros gets the hint', async (t) => {
+  const logger = recordingLogger();
+  const { gladys, app, channel } = await setup(t, {
+    containers: RUNNING,
+    logger,
+    config: { accounts: '0012, 5678, 0000' },
+  });
+  channel.up();
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '12' });
+  assert.match(
+    logger.warnings[0],
+    /leading zeros included: 12 and 0012 are two different accounts\.$/,
+  );
+  assert.match(
+    gladys.fake.connectionStatus.message.fr,
+    /zéros de tête compris : 12 et 0012 sont deux comptes différents\.$/,
+  );
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000012' });
+  assert.match(logger.warnings[1], /000012 and 0012 are two different accounts/);
+  // No hint for an unrelated number, nor for zeros only (its own sentence).
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '9999' });
+  assert.doesNotMatch(logger.warnings[2], /leading zeros/);
+  await app.onChannelMessage({ type: 'rejected', reason: 'unknown_account', account: '000' });
+  assert.doesNotMatch(logger.warnings[3], /leading zeros/);
+  assert.match(logger.warnings[3], /object number is empty/);
+  // The helper itself: zeros only never match a longer run of zeros, case does not matter.
+  assert.equal(zerosDiffer('000', ['0000', '0012']), undefined);
+  assert.equal(zerosDiffer('12', ['0012']), '0012');
+  assert.equal(zerosDiffer('0012', ['0012']), undefined);
+  assert.equal(zerosDiffer('AB', ['00AB']), '00AB');
 });
 
 test('a created device gets every state again', async (t) => {

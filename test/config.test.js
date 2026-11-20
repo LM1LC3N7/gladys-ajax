@@ -11,6 +11,23 @@ test('accounts: 3 to 16 hex digits, upper case, separators, duplicates', () => {
   assert.deepEqual(parseAccounts(undefined), { valid: [], invalid: [] });
 });
 
+test('accounts: leading zeros and length are kept as typed (the hub sends them as is)', () => {
+  // 000 (empty object number on the hub), 0007 and 007 are three different accounts.
+  assert.deepEqual(parseAccounts('000 0007 007 #000ABC 0000000000000000').valid, [
+    '000',
+    '0007',
+    '007',
+    '000ABC',
+    '0000000000000000',
+  ]);
+  // A space inside a number makes two numbers: nothing is joined or shortened.
+  assert.deepEqual(parseAccounts('000 7'), { valid: ['000'], invalid: ['7'] });
+  assert.deepEqual(parseAccounts('000-7 0x12 12G4'), {
+    valid: [],
+    invalid: ['000-7', '0x12', '12G4'],
+  });
+});
+
 test('defaults and bounds', () => {
   const config = normalizeConfig({});
   assert.deepEqual(config.accounts, []);

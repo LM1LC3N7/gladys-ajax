@@ -10,6 +10,11 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- A hub that reports while its device was not added in Gladys (typically after a change of account number: a new number is a new device) is named in the status and the logs (once, then once an hour at most) with the step to take: add it from the Discovery tab; the status is refreshed at the first message and when a device is created, updated or deleted. A device left in Gladys for an account no longer configured is reported too (status note, logs, status button) so the user deletes it.
+- An account refused for its leading zeros (`12` sent, `0012` configured) gets a hint: numbers are compared as sent.
+
 ## [0.1.5] - 2026-11-19
 
 ### Fixed

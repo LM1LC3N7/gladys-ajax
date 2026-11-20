@@ -63,7 +63,9 @@ the receiver keeps the last 500 messages and delivers them once it is back.
    section, the **address and port** to give to the hub (reload the page if
    the port is still shown as `{{port:sia}}`).
 3. In the Ajax app, set up the monitoring station (next section).
-4. In the **Discovery** tab, add the device **Ajax alarm 1234**.
+4. In the **Discovery** tab, add the device **Ajax alarm 1234** (without
+   it, Gladys ignores the states received; the status reminds you as soon as
+   the hub reports).
 5. Click **Show the receiver status**: it says whether the hub reports and
    shows the last refused message, if any.
 
@@ -92,14 +94,14 @@ reverse proxy, that name is not the right one; use the machine's LAN IP.
 
 ## Configuration
 
-| Field                             | Description                                                                                                                                                                                |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Account number(s) (object number) | the object number set on the hub. Several hubs: separate their numbers with commas (one device per hub). A hub reporting with a number that is not listed is refused, and the logs say so. |
-| Encryption key                    | the key set on the hub, shared by all the accounts. Empty: no encryption. With a key, unencrypted messages are refused.                                                                    |
-| Key format                        | automatic: 32 hexadecimal characters are read as hexadecimal (Ajax "HEX" key), 16 characters as text (Ajax "ASCII" key). Choose "Text" for a 32-character text key made of hex digits.     |
-| Periodic test interval of the hub | the interval set in the Ajax app, in minutes. The hub is shown as **silent** after two missed tests (plus 30 s). 0: no supervision.                                                        |
-| Allowed clock difference          | 60 s by default. A message whose time is further from the Gladys clock is refused (it protects against replayed messages); the hub then sets its clock and resends it. 0: not checked.     |
-| Language                          | French or English, for the names of the devices added afterwards and the last event text.                                                                                                  |
+| Field                             | Description                                                                                                                                                                                                                                                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account number(s) (object number) | the object number set on the hub, as is (3 to 16 hexadecimal characters, leading zeros included). Several hubs: separate their numbers with commas (one device per hub). A hub reporting with a number that is not listed is refused, and the logs say so. A changed number is a new device to add from Discovery (see Troubleshooting). |
+| Encryption key                    | the key set on the hub, shared by all the accounts. Empty: no encryption. With a key, unencrypted messages are refused.                                                                                                                                                                                                                  |
+| Key format                        | automatic: 32 hexadecimal characters are read as hexadecimal (Ajax "HEX" key), 16 characters as text (Ajax "ASCII" key). Choose "Text" for a 32-character text key made of hex digits.                                                                                                                                                   |
+| Periodic test interval of the hub | the interval set in the Ajax app, in minutes. The hub is shown as **silent** after two missed tests (plus 30 s). 0: no supervision.                                                                                                                                                                                                      |
+| Allowed clock difference          | 60 s by default. A message whose time is further from the Gladys clock is refused (it protects against replayed messages); the hub then sets its clock and resends it. 0: not checked.                                                                                                                                                   |
+| Language                          | French or English, for the names of the devices added afterwards and the last event text.                                                                                                                                                                                                                                                |
 
 ## What you get
 
@@ -215,7 +217,19 @@ Gladys and never logged.
   in "Object number" in the Ajax app (space settings → Security companies →
   Monitoring station) and the same one in the configuration, or put 000 in
   the configuration. An account missing from the configuration is always
-  refused.
+  refused. Numbers are compared as the hub sends them, leading zeros
+  included and whatever the case: `0012`, `12` and `000` are three different
+  accounts; a space in the field separates two numbers.
+- **"Hub … reports, but its device is not in Gladys"** (status, logs) or
+  **"device not added in Gladys"** (status button): the hub does reach
+  Gladys, but Gladys ignores the states of a device that was not added. Open
+  the **Discovery** tab and add **Ajax alarm 1234**. This is what happens
+  after a **change of account number**: the Gladys device carries the number
+  in its identifier, so a new number is a new device. Add it from Discovery,
+  delete the old one (the status reports it as "an account that is no longer
+  configured" as long as it exists) and rebuild its dashboard widgets and
+  scenes on the new device. The mode, the groups and the last event fill in
+  at the next message of the hub.
 - **"Decryption failed (wrong key?)"**, **"no encryption key is configured"**
   or **"Unencrypted message … refused"**: the key or the encryption switch
   differs between the hub and Gladys.

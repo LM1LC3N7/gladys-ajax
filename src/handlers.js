@@ -11,6 +11,7 @@ export function registerHandlers(gladys, app, logger) {
   gladys.onScanRequest(() => app.scan());
   gladys.onDeviceCreated(() => app.exclusive(() => app.deviceChanged()));
   gladys.onDeviceUpdated(() => app.exclusive(() => app.deviceChanged()));
+  gladys.onDeviceDeleted(() => app.exclusive(() => app.deviceChanged()));
 
   // SIA is one-way: nothing can be commanded.
   gladys.onSetValue(async () => {

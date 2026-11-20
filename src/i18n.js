@@ -162,6 +162,16 @@ export function eventText(parts, language) {
   return [codeLabel(parts.code, language), ...details].join(', ') + ` (${parts.code})`;
 }
 
+/**
+ * The configured account that is `account` with other leading zeros (`12` for `0012`),
+ * else undefined. Accounts made of zeros only never match (000 is "no object number").
+ */
+export function zerosDiffer(account, configured) {
+  const trimmed = account.replace(/^0+/, '');
+  if (trimmed === '') return undefined;
+  return configured.find((other) => other !== account && other.replace(/^0+/, '') === trimmed);
+}
+
 /** Messages of the connection status and the buttons. */
 export const MESSAGES = {
   noAccount: {
@@ -199,7 +209,9 @@ export const MESSAGES = {
       } in the Ajax app (space settings → Security companies → Monitoring station), or add ${account} to "Account number(s)" in the configuration of this integration.${
         /^0+$/.test(account)
           ? ` ${account} is what an Ajax hub sends when its object number is empty.`
-          : ''
+          : zerosDiffer(account, configured)
+            ? ` Numbers are compared as sent, leading zeros included: ${account} and ${zerosDiffer(account, configured)} are two different accounts.`
+            : ''
       }`,
     fr: (account, configured) =>
       `Une centrale envoie le compte ${account}, absent de la configuration (configuré : ${
@@ -209,8 +221,35 @@ export const MESSAGES = {
       } dans « Numéro d'objet » de l'application Ajax (paramètres de l'espace → Sociétés de sécurité → Centre de télésurveillance), ou ajoutez ${account} à « Numéro(s) de compte » dans la configuration de cette intégration.${
         /^0+$/.test(account)
           ? ` ${account} est ce qu'envoie une centrale Ajax dont le numéro d'objet est vide.`
-          : ''
+          : zerosDiffer(account, configured)
+            ? ` Les numéros sont comparés tels quels, zéros de tête compris : ${account} et ${zerosDiffer(account, configured)} sont deux comptes différents.`
+            : ''
       }`,
+  },
+  // `names`: the device names (array), as the Discovery tab lists them.
+  deviceMissing: {
+    en: (names) =>
+      `Hub${names.length > 1 ? 's' : ''} ${names.join(', ')} report${
+        names.length > 1 ? '' : 's'
+      }, but ${names.length > 1 ? 'their devices are' : 'its device is'} not in Gladys: add ${
+        names.length > 1 ? 'them' : 'it'
+      } from the Discovery tab (a changed account number is a new device: delete the old one and rebuild its dashboard widgets).`,
+    fr: (names) =>
+      names.length > 1
+        ? `Les centrales ${names.join(', ')} transmettent, mais leurs appareils ne sont pas dans Gladys : ajoutez-les depuis l'onglet Découverte (un numéro de compte changé est un nouvel appareil : supprimez l'ancien et refaites ses widgets du tableau de bord).`
+        : `La centrale ${names[0]} transmet, mais son appareil n'est pas dans Gladys : ajoutez-le depuis l'onglet Découverte (un numéro de compte changé est un nouvel appareil : supprimez l'ancien et refaites ses widgets du tableau de bord).`,
+  },
+  orphanDevice: {
+    en: (names) =>
+      `Device${names.length > 1 ? 's' : ''} ${names.join(', ')} in Gladys ${
+        names.length > 1 ? 'belong' : 'belongs'
+      } to an account that is no longer configured: ${
+        names.length > 1 ? 'they get' : 'it gets'
+      } no state any more. Delete ${names.length > 1 ? 'them' : 'it'} (or add the account back).`,
+    fr: (names) =>
+      names.length > 1
+        ? `Les appareils ${names.join(', ')} de Gladys correspondent à des comptes qui ne sont plus configurés : ils ne reçoivent plus d'état. Supprimez-les (ou remettez les comptes dans la configuration).`
+        : `L'appareil ${names[0]} de Gladys correspond à un compte qui n'est plus configuré : il ne reçoit plus d'état. Supprimez-le (ou remettez le compte dans la configuration).`,
   },
   cleared: {
     en: (count) => `Alarm and fault memory cleared (${count} hub${count > 1 ? 's' : ''}).`,
